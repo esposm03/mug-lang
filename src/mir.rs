@@ -1,7 +1,7 @@
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Symbol(pub usize);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Place(pub Symbol);
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -13,6 +13,14 @@ pub struct BlockId(pub usize);
 #[derive(Clone, Copy)]
 pub enum Typ {
     I8,
+}
+
+impl From<Typ> for cranelift::prelude::Type {
+    fn from(value: Typ) -> Self {
+        match value {
+            Typ::I8 => cranelift::prelude::types::I8,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

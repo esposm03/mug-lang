@@ -35,28 +35,30 @@ fn main() {
     let (th_id, mut th_builder) = mir.block();
     let (el_id, mut el_builder) = mir.block();
 
-    // Entry block: if (1+1) { th_bb } else { el_bb }
     let (entry_id, mut builder) = mir.block();
-    let ciao = mir.reg("ciao");
-    builder.emit(Inst::Imm(ciao, Val::I8(1)));
-    let mondo = mir.reg("mondo");
-    builder.emit(Inst::Imm(mondo, Val::I8(1)));
-    let risultato = mir.reg("risultato");
-    builder.emit(Inst::Add(risultato, Typ::I8, ciao, mondo));
+    let i1 = mir.reg("i1");
+    builder.emit(Inst::Imm(i1, Val::I8(1)));
+    let my_var = mir.place("my_var");
+    builder.emit(Inst::Alloca(my_var, Typ::I8));
+    builder.emit(Inst::Store(my_var, Typ::I8, i1));
     let entry_bb = builder.term(TermInst::If {
-        cond: risultato,
+        cond: i1,
         th: th_id,
         el: el_id,
     });
     function_translator.translate(entry_id, entry_bb);
 
-    let res = mir.reg("res");
-    th_builder.emit(Inst::Imm(res, Val::I8(1)));
-    let th_bb = th_builder.term(TermInst::Ret(Typ::I8, res));
+    let i2 = mir.reg("i2");
+    th_builder.emit(Inst::Imm(i2, Val::I8(1)));
+    let my_var_value = mir.reg("my_var1");
+    th_builder.emit(Inst::Load(my_var_value, Typ::I8, my_var));
+    let r2 = mir.reg("r2");
+    th_builder.emit(Inst::Add(r2, Typ::I8, i2, my_var_value));
+    let th_bb = th_builder.term(TermInst::Ret(Typ::I8, r2));
     function_translator.translate(th_id, th_bb);
 
-    el_builder.emit(Inst::Imm(res, Val::I8(2)));
-    let el_bb = el_builder.term(TermInst::Ret(Typ::I8, res));
+    el_builder.emit(Inst::Imm(i2, Val::I8(2)));
+    let el_bb = el_builder.term(TermInst::Ret(Typ::I8, i2));
     function_translator.translate(el_id, el_bb);
 
     let func_id = function_translator.finish();

@@ -5,7 +5,7 @@ use cranelift_codegen::isa::TargetIsa;
 use cranelift_module::{FuncId, Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
-use crate::mir::{BasicBlock, BlockId, Inst, Reg, TermInst, Val};
+use crate::mir::{BasicBlock, BlockId, Inst, Place, Reg, TermInst, Val};
 
 pub struct ClifBackend {
     isa: Arc<dyn TargetIsa>,
@@ -14,6 +14,7 @@ pub struct ClifBackend {
     function_ctx: FunctionBuilderContext,
 
     regs: HashMap<Reg, Value>,
+    vars: HashMap<Place, Variable>,
     bblocks: HashMap<BlockId, Block>,
 }
 
@@ -41,6 +42,7 @@ impl ClifBackend {
             function_ctx: fctx,
             regs: HashMap::new(),
             bblocks: HashMap::new(),
+            vars: HashMap::new(),
         }
     }
 
@@ -65,6 +67,7 @@ impl ClifBackend {
             builder,
             isa: Arc::clone(&self.isa),
             regs: &mut self.regs,
+            vars: &mut self.vars,
             bblocks: &mut self.bblocks,
         }
     }
@@ -90,6 +93,7 @@ pub struct ClifTranslator<'a> {
     builder: FunctionBuilder<'a>,
 
     regs: &'a mut HashMap<Reg, Value>,
+    vars: &'a mut HashMap<Place, Variable>,
     bblocks: &'a mut HashMap<BlockId, Block>,
 }
 
@@ -112,9 +116,17 @@ impl<'a> ClifTranslator<'a> {
         for inst in bb.insts {
             match inst {
                 Inst::Comment(_) => todo!(),
-                Inst::Alloca(_, _) => todo!(),
-                Inst::Store(_, _, _) => todo!(),
-                Inst::Load(_, _, _) => todo!(),
+                Inst::Alloca(place, typ) => {
+                    let var = self.builder.declare_var(typ.into());
+                    self.vars.insert(place, var);
+                }
+                Inst::Store(place, _typ, reg) => {
+                    self.builder.def_var(self.vars[&place], self.regs[&reg]);
+                }
+                Inst::Load(reg, _typ, place) => {
+                    let val = self.builder.use_var(self.vars[&place]);
+                    self.regs.insert(reg, val);
+                }
                 Inst::Imm(reg, val) => {
                     let (typ, val) = match val {
                         Val::I8(val) => (types::I8, val as i64),
