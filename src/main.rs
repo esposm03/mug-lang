@@ -4,17 +4,15 @@ use target_lexicon::Triple;
 use tempfile::NamedTempFile;
 
 use crate::{
-    clif::ClifBackend,
+    backends::clif::ClifBackend,
     linker::link,
+    mir::build::MirBuilder,
     mir::{Inst, TermInst, Typ, Val},
-    mirbuild::MirBuilder,
 };
 
-mod clif;
+mod backends;
 mod linker;
 mod mir;
-mod mirbuild;
-mod mirprint;
 
 fn parse_triple(s: &str) -> Result<Triple, String> {
     Triple::from_str(s).map_err(|e| format!("{e}"))
