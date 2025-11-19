@@ -36,12 +36,12 @@ struct Args {
 fn main() {
     let buf = "
         let a = 10;
-        let b = 20;
+        let b = 2.0;
     ";
     fn cache<'a>(_: &&'a str) -> Result<&'a str, ()> {
         let buf = "
         let a = 10;
-        let b = 20;
+        let b = 2.0;
     ";
         Ok(buf)
     }
