@@ -4,6 +4,7 @@ use cranelift::prelude::*;
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_module::{FuncId, Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
+use target_lexicon::Triple;
 
 use crate::mir::{BasicBlock, BlockId, Inst, Place, Reg, TermInst, Val};
 
@@ -19,14 +20,14 @@ pub struct ClifBackend {
 }
 
 impl ClifBackend {
-    pub fn new(translation_unit: &str, target: &str) -> Self {
+    pub fn new(translation_unit: &str, target: Triple) -> Self {
         let isa = {
             let mut builder = settings::builder();
-            builder.set("opt_level", "none").unwrap();
+            builder.set("opt_level", "speed_and_size").unwrap();
             builder.enable("is_pic").unwrap();
             let flags = settings::Flags::new(builder);
 
-            isa::lookup_by_name(target).unwrap().finish(flags).unwrap()
+            isa::lookup(target).unwrap().finish(flags).unwrap()
         };
 
         let builder = ObjectBuilder::new(isa.clone(), translation_unit, default_libcall_names());
@@ -73,7 +74,6 @@ impl ClifBackend {
     }
 
     pub fn finish_function<'a>(&'a mut self, func_id: FuncId) {
-        println!("fn main:\n{}", &self.codegen_ctx.func);
         self.module
             .define_function(func_id, &mut self.codegen_ctx)
             .unwrap();
@@ -109,13 +109,14 @@ impl<'a> ClifTranslator<'a> {
             .or_insert_with(|| self.builder.create_block())
     }
 
-    pub fn translate(&mut self, id: BlockId, bb: BasicBlock) {
-        let block = self.block(id);
+    pub fn translate(&mut self, bb: BasicBlock) {
+        let block = self.block(bb.id);
         self.builder.switch_to_block(block);
+        self.builder.seal_block(block);
 
         for inst in bb.insts {
             match inst {
-                Inst::Comment(_) => todo!(),
+                Inst::Comment(_) => {}
                 Inst::Alloca(place, typ) => {
                     let var = self.builder.declare_var(typ.into());
                     self.vars.insert(place, var);
@@ -160,6 +161,10 @@ impl<'a> ClifTranslator<'a> {
 
     #[must_use = "Pass the FuncId to `ClifTranslator::finish_function`"]
     pub fn finish(mut self) -> FuncId {
+        let mut str = String::new();
+        codegen::write_function(&mut str, &self.builder.func).unwrap();
+        println!("{str}");
+
         codegen::verify_function(&self.builder.func, self.isa.as_ref()).expect("Verifier error");
         self.builder.seal_all_blocks();
         self.builder.finalize();

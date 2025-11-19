@@ -48,6 +48,7 @@ pub enum TermInst {
 }
 
 pub struct BasicBlock {
+    pub id: BlockId,
     pub insts: Vec<Inst>,
     pub term: TermInst,
 }
