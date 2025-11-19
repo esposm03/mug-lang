@@ -1,18 +1,22 @@
-use std::{fs, path::Path, str::FromStr};
+use std::{fs, path::Path, process, str::FromStr};
 
+use ariadne::FnCache;
+use chumsky::Parser;
 use target_lexicon::Triple;
 use tempfile::NamedTempFile;
 
 use crate::{
     backends::clif::ClifBackend,
+    errors::report_lexing_error,
     linker::link,
-    mir::build::MirBuilder,
-    mir::{Inst, TermInst, Typ, Val},
+    mir::{Inst, TermInst, Typ, Val, build::MirBuilder},
 };
 
 mod backends;
+mod errors;
 mod linker;
 mod mir;
+mod parsing;
 
 fn parse_triple(s: &str) -> Result<Triple, String> {
     Triple::from_str(s).map_err(|e| format!("{e}"))
@@ -30,6 +34,31 @@ struct Args {
 }
 
 fn main() {
+    let buf = "
+        let a = 10;
+        let b = 20;
+    ";
+    fn cache<'a>(_: &&'a str) -> Result<&'a str, ()> {
+        let buf = "
+        let a = 10;
+        let b = 20;
+    ";
+        Ok(buf)
+    }
+
+    let _toks = match parsing::lexer::tokens().parse(buf).into_result() {
+        Ok(toks) => toks,
+        Err(errors) => {
+            for e in errors {
+                report_lexing_error("main.mug", e)
+                    .eprint(FnCache::new(cache))
+                    .unwrap();
+            }
+
+            process::exit(1);
+        }
+    };
+
     let args = argh::from_env::<Args>();
     let mut translator = ClifBackend::new(&args.output, args.target_triple.clone());
     let mut function_translator = translator.start_function("main");
