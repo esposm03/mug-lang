@@ -111,6 +111,12 @@ impl<'a> fmt::Display for InstDisplay<'a> {
                 let reg2 = reg2.display(self.syms);
                 write!(f, "add {typ} {reg} = {reg1} + {reg2}")
             }
+            Inst::Lt(reg, typ, reg1, reg2) => {
+                let reg = reg.display(self.syms);
+                let reg1 = reg1.display(self.syms);
+                let reg2 = reg2.display(self.syms);
+                write!(f, "icmp {typ} {reg} = {reg1} < {reg2}")
+            }
         }
     }
 }
@@ -135,6 +141,7 @@ impl<'a> fmt::Display for TermInstDisplay<'a> {
             TermInst::If { cond, th, el } => {
                 write!(f, "if {} then {th} else {el}", cond.display(self.syms))
             }
+            TermInst::Jmp(block_id) => write!(f, "jmp {block_id}"),
         }
     }
 }

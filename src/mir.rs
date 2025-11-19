@@ -39,12 +39,14 @@ pub enum Inst {
 
     Imm(Reg, Val),
     Add(Reg, Typ, Reg, Reg),
+    Lt(Reg, Typ, Reg, Reg),
 }
 
 #[derive(Clone, Copy)]
 pub enum TermInst {
     Ret(Typ, Reg),
     If { cond: Reg, th: BlockId, el: BlockId },
+    Jmp(BlockId),
 }
 
 pub struct BasicBlock {

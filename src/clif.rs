@@ -109,10 +109,17 @@ impl<'a> ClifTranslator<'a> {
             .or_insert_with(|| self.builder.create_block())
     }
 
-    pub fn translate(&mut self, bb: BasicBlock) {
+    pub fn seal(&mut self, id: BlockId) {
+        let block = self.block(id);
+        self.builder.seal_block(block);
+    }
+
+    pub fn translate(&mut self, bb: BasicBlock, seal: bool) {
         let block = self.block(bb.id);
         self.builder.switch_to_block(block);
-        self.builder.seal_block(block);
+        if seal {
+            self.builder.seal_block(block);
+        }
 
         for inst in bb.insts {
             match inst {
@@ -142,6 +149,12 @@ impl<'a> ClifTranslator<'a> {
                     let res = self.ins().iadd(reg1, reg2);
                     self.regs.insert(reg, res);
                 }
+                Inst::Lt(reg, _typ, reg1, reg2) => {
+                    let reg1 = self.regs[&reg1];
+                    let reg2 = self.regs[&reg2];
+                    let res = self.ins().icmp(IntCC::SignedLessThan, reg1, reg2);
+                    self.regs.insert(reg, res);
+                }
             }
         }
 
@@ -155,6 +168,10 @@ impl<'a> ClifTranslator<'a> {
                 let th = self.block(th);
                 let el = self.block(el);
                 self.ins().brif(c, th, &[], el, &[])
+            }
+            TermInst::Jmp(block_id) => {
+                let bb = self.block(block_id);
+                self.ins().jump(bb, &[])
             }
         };
     }
