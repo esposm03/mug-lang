@@ -48,6 +48,10 @@ pub enum Token<'a> {
     RParen,
     #[token(",")]
     Comma,
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
     #[regex(r"-?[0-9][0-9_]*", int_10)]
     IntLit(i64),
     #[regex(r"[[:alpha:]_][[:alnum:]]*")]
@@ -82,6 +86,8 @@ impl std::fmt::Display for Token<'_> {
             Token::LParen => write!(f, "("),
             Token::RParen => write!(f, ")"),
             Token::Comma => write!(f, ","),
+            Token::True => write!(f, "true"),
+            Token::False => write!(f, "false"),
         }
     }
 }

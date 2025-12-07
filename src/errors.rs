@@ -1,9 +1,126 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops};
 
-use ariadne::{Fmt, Label, Report, ReportKind};
+use ariadne::{ColorGenerator, Fmt, Label, Report, ReportKind};
 use chumsky::error::{Rich, RichReason};
+use internment::Intern;
 
-type SpanTy<'a> = (&'a str, std::ops::Range<usize>);
+use crate::parsing::ast;
+
+type SpanTy<'a> = (&'a str, ops::Range<usize>);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Span {
+    source: Intern<String>,
+    start: usize,
+    end: usize,
+}
+
+impl Display for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.source, self.start, self.end)
+    }
+}
+
+impl ariadne::Span for Span {
+    type SourceId = Intern<String>;
+
+    fn source(&self) -> &Self::SourceId {
+        &self.source
+    }
+
+    fn start(&self) -> usize {
+        self.start
+    }
+
+    fn end(&self) -> usize {
+        self.end
+    }
+}
+
+impl chumsky::span::Span for Span {
+    type Context = Intern<String>;
+
+    type Offset = usize;
+
+    fn new(context: Self::Context, range: ops::Range<Self::Offset>) -> Self {
+        Self {
+            source: context,
+            start: range.start,
+            end: range.end,
+        }
+    }
+
+    fn context(&self) -> Self::Context {
+        self.source
+    }
+
+    fn start(&self) -> Self::Offset {
+        self.start
+    }
+
+    fn end(&self) -> Self::Offset {
+        self.end
+    }
+}
+
+pub trait MugError {
+    fn report(self: Box<Self>) -> ariadne::Report<'static, Span>;
+}
+
+pub type MugErr = Box<dyn MugError>;
+
+pub struct TypeMismatchError {
+    pub span_total: Span,
+    pub span1: Span,
+    pub typ1: ast::Typ,
+    pub span2: Span,
+    pub typ2: ast::Typ,
+}
+
+impl MugError for TypeMismatchError {
+    fn report(self: Box<Self>) -> ariadne::Report<'static, Span> {
+        let mut colors = ColorGenerator::new();
+        Report::build(ReportKind::Error, self.span_total)
+            // .with_code(3)
+            .with_message(format!("Incompatible types"))
+            .with_label(
+                Label::new(self.span1)
+                    .with_message(format!("This is of type {}", self.typ1.fg(colors.next()))),
+            )
+            .with_label(
+                Label::new(self.span2)
+                    .with_message(format!("This is of type {}", self.typ2.fg(colors.next()))),
+            )
+            .finish()
+    }
+}
+
+pub struct BinopTypeMismatchError {
+    pub span_total: Span,
+    pub op: ast::BinOp,
+    pub arg_types: ast::Typ,
+    pub expected: ast::Typ,
+}
+
+impl MugError for BinopTypeMismatchError {
+    fn report(self: Box<Self>) -> ariadne::Report<'static, Span> {
+        let mut colors = ColorGenerator::new();
+        let expected = self.expected.fg(colors.next());
+        let found = self.arg_types.fg(colors.next());
+        Report::build(ReportKind::Error, self.span_total)
+            // .with_code(3)
+            .with_message(format!(
+                "Can't use the `{}` operator on arguments of type `{}`",
+                self.op, found,
+            ))
+            .with_label(Label::new(self.span_total).with_message(format!(
+                "No implementation for `{} {} {}`",
+                found, self.op, found,
+            )))
+            .with_note(format!("Expected arguments to have type {}", expected))
+            .finish()
+    }
+}
 
 fn str_join_iterator<'a, D: Display, I: ExactSizeIterator<Item = D>>(it: I) -> String {
     use std::fmt::Write;
@@ -37,10 +154,7 @@ pub fn reason_to_msg<T: Display>(s: &RichReason<T>) -> String {
     }
 }
 
-pub fn reason_to_label<'a, T: Clone + Display>(
-    span: SpanTy<'a>,
-    reason: &RichReason<T>,
-) -> Label<SpanTy<'a>> {
+pub fn reason_to_label<'a, T: Clone + Display>(span: Span, reason: &RichReason<T>) -> Label<Span> {
     let col = ariadne::Color::Red;
 
     let msg = match reason {
@@ -59,11 +173,8 @@ pub fn reason_to_label<'a, T: Clone + Display>(
 }
 
 #[must_use]
-pub fn report_error<'a, T: Clone + Display>(
-    filename: &'a str,
-    err: Rich<'a, T>,
-) -> Report<'a, SpanTy<'a>> {
-    let sp = (filename, err.span().start..err.span().end);
+pub fn report_error<'a, T: Clone + Display>(err: Rich<'a, T, Span>) -> Report<'a, Span> {
+    let sp = err.span().clone();
     Report::build(ReportKind::Error, sp.clone())
         .with_message(reason_to_msg(err.reason()))
         .with_label(reason_to_label(sp, err.reason()))

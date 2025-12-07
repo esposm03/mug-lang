@@ -1,15 +1,22 @@
-use std::{fs, path::Path, process, str::FromStr};
+use std::{
+    fs,
+    io::{BufRead, Read, stdin},
+    path::Path,
+    process,
+    str::FromStr,
+};
 
 use ariadne::Source;
 use chumsky::{input::Stream, prelude::*};
 use display_tree::{CharSet, Style, StyleBuilder, println_tree};
+use internment::Intern;
 use logos::Logos;
 use target_lexicon::Triple;
 use tempfile::NamedTempFile;
 
 use crate::{
     backends::clif,
-    errors::report_error,
+    errors::{Span, report_error},
     linker::link,
     lowering::{Event, Lower},
     parsing::{lexer::Token, parser::expr},
@@ -37,24 +44,30 @@ pub struct Args {
     output: String,
 }
 
-fn run<'a>(src: &'a str) -> Result<(), Vec<Rich<'a, Token<'a>>>> {
-    let lexer = Token::lexer(src).spanned().map(|(tok, span)| match tok {
-        Ok(tok) => (tok, SimpleSpan::from(span)),
-        Err(()) => (Token::Error, span.into()),
+fn run<'a>(filename: Intern<String>, src: &'a str) -> Result<(), Vec<Rich<'a, Token<'a>, Span>>> {
+    let lexer = Token::lexer(src).spanned().map(move |(tok, span)| {
+        let tok = tok.unwrap_or(Token::Error);
+        let span = Span::new(filename, span);
+        (tok, span)
     });
-    let str = Stream::from_iter(lexer).map((0..src.len()).into(), |ts| ts);
+    let str = Stream::from_iter(lexer).map(Span::new(filename, 0..src.len()), |ts| ts);
 
     let ast = expr().parse(str).into_result()?;
-    println_tree!(
-        ast,
-        Style::default()
-            .indentation(1)
-            .char_set(CharSet::DOUBLE_LINE)
-    );
+    // println_tree!(
+    //     ast,
+    //     Style::default()
+    //         .indentation(1)
+    //         .char_set(CharSet::DOUBLE_LINE)
+    // );
 
     let mut lower = Lower::new();
     lower.lower_return(&ast);
-    let mut events = lower.finish();
+    let mut events = lower.finish().unwrap_or_else(|errors| {
+        for err in errors {
+            err.report().eprint((filename, Source::from(src))).unwrap();
+        }
+        process::exit(1);
+    });
     events.insert(0, Event::Function("main".to_string())); // TODO: remove this
 
     let args = argh::from_env::<Args>();
@@ -73,12 +86,14 @@ fn run<'a>(src: &'a str) -> Result<(), Vec<Rich<'a, Token<'a>>>> {
 }
 
 fn main() {
-    let src = "1+2+3";
+    let mut src = String::new();
+    stdin().lock().read_to_string(&mut src).unwrap();
+    let filename = Intern::new("main.mug".to_string());
 
-    if let Err(errors) = run(src) {
+    if let Err(errors) = run(filename, &src) {
         for e in errors {
-            report_error("main.mug", e)
-                .eprint(("main.mug", Source::from(src)))
+            report_error(e)
+                .eprint((filename, Source::from(&src)))
                 .unwrap();
         }
 

@@ -18,12 +18,19 @@ pub struct BlockId(pub usize);
 #[derive(Clone, Copy)]
 pub enum Typ {
     I8,
+    I64,
+    Bool,
+    Error,
 }
 
 impl From<Typ> for cranelift::prelude::Type {
     fn from(value: Typ) -> Self {
+        use cranelift::prelude::types::*;
         match value {
-            Typ::I8 => cranelift::prelude::types::I8,
+            Typ::I8 => I8,
+            Typ::I64 => I64,
+            Typ::Bool => I8,
+            Typ::Error => todo!(),
         }
     }
 }
