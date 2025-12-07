@@ -16,6 +16,9 @@ impl fmt::Display for Val {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Val::I8(x) => write!(f, "{x}"),
+            Val::I64(x) => write!(f, "{x}"),
+            Val::False => write!(f, "false"),
+            Val::True => write!(f, "true"),
         }
     }
 }

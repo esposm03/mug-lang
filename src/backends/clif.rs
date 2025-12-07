@@ -6,9 +6,56 @@ use cranelift_module::{FuncId, Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
 
-use crate::mir::{BasicBlock, BlockId, Inst, Place, Reg, TermInst, Val};
+use crate::{
+    Args,
+    lowering::Event,
+    mir::{BasicBlock, BlockId, Inst, Place, Reg, TermInst, Val},
+};
 
-pub struct ClifBackend {
+fn print_event(e: &Event) {
+    match e {
+        Event::Function(s) => println!("Start function {s}"),
+        Event::Block(basic_block) => println!("Emit basic block {}", basic_block.id.0),
+        Event::DisableAutoSeal => println!("Disable auto-seal"),
+        Event::EnableAutoSeal => println!("Enable auto-seal"),
+    }
+}
+
+pub fn handle_events(args: &Args, events: Vec<Event>) -> Vec<u8> {
+    let mut clif = ClifBackend::new(&args.output, args.target_triple.clone());
+    let mut iter = events.into_iter().peekable();
+    while let Some(ev) = iter.next() {
+        print_event(&ev);
+
+        if let Event::Function(name) = &ev {
+            let mut clif_func = clif.start_function(name);
+            let mut auto_seal = true;
+
+            while !matches!(iter.peek(), Some(Event::Function(_)) | None) {
+                match iter.next().unwrap() {
+                    Event::Function(_) => unreachable!(),
+                    Event::Block(ref basic_block) => clif_func.translate(basic_block, auto_seal),
+                    Event::DisableAutoSeal => {
+                        assert!(auto_seal);
+                        auto_seal = false
+                    }
+                    Event::EnableAutoSeal => {
+                        assert!(!auto_seal);
+                        clif_func.seal_all();
+                        auto_seal = true
+                    }
+                }
+            }
+
+            let id = clif_func.finish();
+            clif.finish_function(id);
+        }
+    }
+
+    clif.finish()
+}
+
+struct ClifBackend {
     isa: Arc<dyn TargetIsa>,
     module: ObjectModule,
     codegen_ctx: codegen::Context,
@@ -20,7 +67,7 @@ pub struct ClifBackend {
 }
 
 impl ClifBackend {
-    pub fn new(translation_unit: &str, target: Triple) -> Self {
+    fn new(translation_unit: &str, target: Triple) -> Self {
         let isa = {
             let mut builder = settings::builder();
             builder.set("opt_level", "speed_and_size").unwrap();
@@ -47,11 +94,11 @@ impl ClifBackend {
         }
     }
 
-    pub fn start_function<'a>(&'a mut self, name: &str) -> ClifTranslator<'a> {
+    fn start_function<'a>(&'a mut self, name: &str) -> ClifTranslator<'a> {
         let signature = Signature {
             call_conv: self.isa.default_call_conv(),
             params: vec![],
-            returns: vec![AbiParam::new(types::I8)],
+            returns: vec![AbiParam::new(types::I64)],
         };
 
         let func_id = self
@@ -73,13 +120,13 @@ impl ClifBackend {
         }
     }
 
-    pub fn finish_function<'a>(&'a mut self, func_id: FuncId) {
+    fn finish_function<'a>(&'a mut self, func_id: FuncId) {
         self.module
             .define_function(func_id, &mut self.codegen_ctx)
             .unwrap();
     }
 
-    pub fn finish(self) -> Vec<u8> {
+    fn finish(self) -> Vec<u8> {
         self.module
             .finish()
             .emit()
@@ -109,19 +156,18 @@ impl<'a> ClifTranslator<'a> {
             .or_insert_with(|| self.builder.create_block())
     }
 
-    pub fn seal(&mut self, id: BlockId) {
-        let block = self.block(id);
-        self.builder.seal_block(block);
+    fn seal_all(&mut self) {
+        self.builder.seal_all_blocks();
     }
 
-    pub fn translate(&mut self, bb: BasicBlock, seal: bool) {
+    fn translate(&mut self, bb: &BasicBlock, seal: bool) {
         let block = self.block(bb.id);
         self.builder.switch_to_block(block);
         if seal {
             self.builder.seal_block(block);
         }
 
-        for inst in bb.insts {
+        for inst in bb.insts.iter().copied() {
             match inst {
                 Inst::Comment(_) => {}
                 Inst::Alloca(place, typ) => {
@@ -138,6 +184,9 @@ impl<'a> ClifTranslator<'a> {
                 Inst::Imm(reg, val) => {
                     let (typ, val) = match val {
                         Val::I8(val) => (types::I8, val as i64),
+                        Val::I64(val) => (types::I64, val),
+                        Val::False => todo!(),
+                        Val::True => todo!(),
                     };
 
                     let res = self.ins().iconst(typ, val);
@@ -177,7 +226,7 @@ impl<'a> ClifTranslator<'a> {
     }
 
     #[must_use = "Pass the FuncId to `ClifTranslator::finish_function`"]
-    pub fn finish(mut self) -> FuncId {
+    fn finish(mut self) -> FuncId {
         let mut str = String::new();
         codegen::write_function(&mut str, &self.builder.func).unwrap();
         println!("{str}");

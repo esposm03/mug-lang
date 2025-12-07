@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 pub mod build;
 pub mod print;
 
@@ -26,9 +28,18 @@ impl From<Typ> for cranelift::prelude::Type {
     }
 }
 
+impl From<&Typ> for cranelift::prelude::Type {
+    fn from(value: &Typ) -> Self {
+        cranelift::prelude::Type::from(*value)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum Val {
     I8(i8),
+    I64(i64),
+    False,
+    True,
 }
 
 #[derive(Clone, Copy)]

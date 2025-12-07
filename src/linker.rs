@@ -24,8 +24,8 @@ pub fn link(output: &Path, objs: &[&Path], triple: Triple) {
         linker
             .arg("-platform_version")
             .arg("macos")
-            .arg("26.0.0")
-            .arg("26.1");
+            .arg("10.7")
+            .arg("10.7");
 
         linker
             .arg("-syslibroot")

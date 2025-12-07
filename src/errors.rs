@@ -24,7 +24,7 @@ fn str_join_iterator<'a, D: Display, I: ExactSizeIterator<Item = D>>(it: I) -> S
     res
 }
 
-pub fn reason_to_msg(s: &RichReason<char>) -> String {
+pub fn reason_to_msg<T: Display>(s: &RichReason<T>) -> String {
     match s {
         RichReason::ExpectedFound { expected, .. } => {
             if expected.len() == 1 {
@@ -33,30 +33,36 @@ pub fn reason_to_msg(s: &RichReason<char>) -> String {
                 format!("expected one of {}", str_join_iterator(expected.iter()))
             }
         }
-        RichReason::Custom(_) => todo!(),
+        RichReason::Custom(s) => s.clone(),
     }
 }
 
-pub fn reason_to_label<'a>(span: SpanTy<'a>, reason: &RichReason<char>) -> Label<SpanTy<'a>> {
+pub fn reason_to_label<'a, T: Clone + Display>(
+    span: SpanTy<'a>,
+    reason: &RichReason<T>,
+) -> Label<SpanTy<'a>> {
     let col = ariadne::Color::Red;
 
     let msg = match reason {
         RichReason::ExpectedFound { found: Some(x), .. } => {
             let tick = "'".fg(col);
-            format!("found {tick}{}{tick}", x.into_inner().fg(col))
+            format!("found {tick}{}{tick}", x.to_string().fg(col))
         }
         RichReason::ExpectedFound { found: None, .. } => {
             let eof = "EOF".fg(col);
             format!("found {eof}")
         }
-        RichReason::Custom(_) => todo!(),
+        RichReason::Custom(s) => s.clone(),
     };
 
     Label::new(span).with_message(msg).with_color(col)
 }
 
 #[must_use]
-pub fn report_lexing_error<'a>(filename: &'a str, err: Rich<'a, char>) -> Report<'a, SpanTy<'a>> {
+pub fn report_error<'a, T: Clone + Display>(
+    filename: &'a str,
+    err: Rich<'a, T>,
+) -> Report<'a, SpanTy<'a>> {
     let sp = (filename, err.span().start..err.span().end);
     Report::build(ReportKind::Error, sp.clone())
         .with_message(reason_to_msg(err.reason()))

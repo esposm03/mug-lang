@@ -43,7 +43,9 @@ impl BbBuilder {
 pub struct MirBuilder {
     next_symbol: usize,
     next_bblock: usize,
+    next_temp: usize,
     symbols: HashMap<Symbol, String>,
+    symbols_rev: HashMap<String, Symbol>,
 }
 
 impl MirBuilder {
@@ -51,15 +53,22 @@ impl MirBuilder {
         Self {
             next_symbol: 0,
             next_bblock: 0,
+            next_temp: 0,
             symbols: HashMap::new(),
+            symbols_rev: HashMap::new(),
         }
     }
 
     fn sym(&mut self, name: &str) -> Symbol {
-        let res = Symbol(self.next_symbol);
-        self.next_symbol += 1;
-        self.symbols.insert(res, name.to_string());
-        res
+        if let Some(x) = self.symbols_rev.get(name) {
+            *x
+        } else {
+            let res = Symbol(self.next_symbol);
+            self.next_symbol += 1;
+            self.symbols.insert(res, name.to_string());
+            self.symbols_rev.insert(name.to_string(), res);
+            res
+        }
     }
 
     pub fn place(&mut self, name: &str) -> Place {
@@ -68,6 +77,13 @@ impl MirBuilder {
 
     pub fn reg(&mut self, name: &str) -> Reg {
         Reg(self.sym(name))
+    }
+
+    pub fn temp(&mut self) -> Reg {
+        let id = self.next_temp;
+        self.next_temp += 1;
+
+        self.reg(&format!("temp.{id}"))
     }
 
     pub fn block(&mut self) -> BbBuilder {
