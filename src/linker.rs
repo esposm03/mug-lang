@@ -7,7 +7,7 @@ fn is_apple(t: &Triple) -> bool {
     matches!(t.operating_system, Darwin(_))
 }
 
-pub fn link(output: &Path, objs: &[&Path], triple: Triple) {
+pub fn link(output: &Path, objs: &[&Path], triple: &Triple) {
     println!("OS: {}", triple.operating_system);
     println!("Arch: {}", triple.architecture);
 

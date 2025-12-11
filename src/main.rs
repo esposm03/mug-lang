@@ -1,14 +1,7 @@
-use std::{
-    fs,
-    io::{BufRead, Read, stdin},
-    path::Path,
-    process,
-    str::FromStr,
-};
+use std::{fs, path::Path, process, str::FromStr};
 
 use ariadne::Source;
 use chumsky::{input::Stream, prelude::*};
-use display_tree::{CharSet, Style, StyleBuilder, println_tree};
 use internment::Intern;
 use logos::Logos;
 use target_lexicon::Triple;
@@ -16,7 +9,7 @@ use tempfile::NamedTempFile;
 
 use crate::{
     backends::clif,
-    errors::{Span, report_error},
+    errors::{MugErr, Span},
     linker::link,
     lowering::{Event, Lower},
     parsing::{lexer::Token, parser::expr},
@@ -42,35 +35,36 @@ pub struct Args {
     /// where to write the output to
     #[argh(option, short = 'o', default = "String::from(\"output\")")]
     output: String,
+    #[argh(positional, default = "String::from(\"input.mug\")")]
+    input: String,
 }
 
-fn run<'a>(filename: Intern<String>, src: &'a str) -> Result<(), Vec<Rich<'a, Token<'a>, Span>>> {
-    let lexer = Token::lexer(src).spanned().map(move |(tok, span)| {
+fn run<'a>(args: &Args) -> Result<(), Vec<MugErr>> {
+    let src = fs::read_to_string(&args.input).map_err(|e| errors::reading_file(&args.input, e))?;
+    let filename = Intern::from_ref(&args.input);
+
+    let lexer = Token::lexer(&src).spanned().map(move |(tok, span)| {
         let tok = tok.unwrap_or(Token::Error);
         let span = Span::new(filename, span);
         (tok, span)
     });
     let str = Stream::from_iter(lexer).map(Span::new(filename, 0..src.len()), |ts| ts);
 
-    let ast = expr().parse(str).into_result()?;
-    // println_tree!(
-    //     ast,
-    //     Style::default()
-    //         .indentation(1)
-    //         .char_set(CharSet::DOUBLE_LINE)
-    // );
+    let ast = expr()
+        .parse(str)
+        .into_result()
+        .map_err(|e| e.into_iter().map(From::from).collect::<Vec<_>>())?;
 
     let mut lower = Lower::new();
     lower.lower_return(&ast);
     let mut events = lower.finish().unwrap_or_else(|errors| {
         for err in errors {
-            err.report().eprint((filename, Source::from(src))).unwrap();
+            err.report().eprint((filename, Source::from(&src))).unwrap();
         }
         process::exit(1);
     });
     events.insert(0, Event::Function("main".to_string())); // TODO: remove this
 
-    let args = argh::from_env::<Args>();
     let object = clif::handle_events(&args, events);
 
     let objpath = NamedTempFile::with_suffix(".o").unwrap();
@@ -79,39 +73,39 @@ fn run<'a>(filename: Intern<String>, src: &'a str) -> Result<(), Vec<Rich<'a, To
     link(
         Path::new(&args.output),
         &[objpath.path()],
-        args.target_triple,
+        &args.target_triple,
     );
 
     Ok(())
 }
 
 fn main() {
-    let mut src = String::new();
-    stdin().lock().read_to_string(&mut src).unwrap();
-    let filename = Intern::new("main.mug".to_string());
+    let args = argh::from_env::<Args>();
 
-    if let Err(errors) = run(filename, &src) {
+    if let Err(errors) = run(&args) {
+        let mut cache = MugCache::default();
         for e in errors {
-            report_error(e)
-                .eprint((filename, Source::from(&src)))
-                .unwrap();
+            e.report().eprint(&mut cache).unwrap();
         }
 
         process::exit(1);
     }
+}
 
-    // println!();
-    // println!("== Cranelift ==");
-    // let func_id = function_translator.finish();
-    // translator.finish_function(func_id);
-    // let product = translator.finish();
+#[derive(Default)]
+struct MugCache(ariadne::FileCache);
 
-    // let objpath = NamedTempFile::with_suffix(".o").unwrap();
-    // fs::write(objpath.path(), product).unwrap();
+impl ariadne::Cache<Intern<String>> for MugCache {
+    type Storage = String;
 
-    // link(
-    //     Path::new(&args.output),
-    //     &[objpath.path()],
-    //     args.target_triple,
-    // );
+    fn fetch(
+        &mut self,
+        id: &Intern<String>,
+    ) -> Result<&Source<Self::Storage>, impl std::fmt::Debug> {
+        self.0.fetch(Path::new(id.as_str()))
+    }
+
+    fn display<'a>(&self, id: &'a Intern<String>) -> Option<impl std::fmt::Display + 'a> {
+        self.0.display(Path::new(id.as_str()))
+    }
 }

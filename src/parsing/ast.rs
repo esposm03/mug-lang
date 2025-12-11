@@ -3,6 +3,7 @@
 use std::fmt;
 
 use display_tree::DisplayTree;
+use internment::Intern;
 
 use crate::errors::Span;
 
@@ -90,7 +91,7 @@ impl std::fmt::Display for Unop {
 }
 
 #[derive(Debug)]
-pub struct Lval(pub String);
+pub struct Lval(pub Intern<String>);
 
 impl std::fmt::Display for Lval {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
