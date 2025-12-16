@@ -3,7 +3,7 @@ use chumsky::{input::ValueInput, prelude::*, select};
 use crate::{
     errors::{self, ParseError, Span},
     parsing::{
-        ast::{BinOp, Expr, Lval},
+        ast::{BinOp, Expr, Ident},
         lexer::Token,
     },
 };
@@ -44,7 +44,7 @@ fn int_lit<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, (i64, Span)> {
 }
 
 pub fn ident<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
-    select! { Token::Ident(x) => Expr::Lval(Lval(x)) }.map_err_with_state(errors::wanted_ident)
+    select! { Token::Ident(x) => Expr::Lval(Ident(x)) }.map_err_with_state(errors::wanted_ident)
 }
 
 #[test]

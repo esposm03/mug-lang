@@ -1,9 +1,16 @@
 use std::{collections::HashMap, sync::Arc};
 
-use cranelift::prelude::*;
-use cranelift_codegen::isa::TargetIsa;
-use cranelift_module::{FuncId, Linkage, Module, default_libcall_names};
-use cranelift_object::{ObjectBuilder, ObjectModule};
+use cranelift::{
+    codegen::{
+        self,
+        ir::{AbiParam, Block, InstBuilder, Signature, Value, condcodes::IntCC, entities, types},
+        isa::{TargetIsa, lookup},
+        settings::{self, Configurable},
+    },
+    frontend,
+    module::{FuncId, Linkage, Module, default_libcall_names},
+    object::{ObjectBuilder, ObjectModule},
+};
 use target_lexicon::Triple;
 
 use crate::{
@@ -59,11 +66,11 @@ struct ClifBackend {
     isa: Arc<dyn TargetIsa>,
     module: ObjectModule,
     codegen_ctx: codegen::Context,
-    function_ctx: FunctionBuilderContext,
+    function_ctx: frontend::FunctionBuilderContext,
 
-    regs: HashMap<Reg, Value>,
-    vars: HashMap<Place, Variable>,
-    bblocks: HashMap<BlockId, Block>,
+    regs: HashMap<Reg, entities::Value>,
+    vars: HashMap<Place, frontend::Variable>,
+    bblocks: HashMap<BlockId, entities::Block>,
 }
 
 impl ClifBackend {
@@ -74,20 +81,18 @@ impl ClifBackend {
             builder.enable("is_pic").unwrap();
             let flags = settings::Flags::new(builder);
 
-            isa::lookup(target).unwrap().finish(flags).unwrap()
+            lookup(target).unwrap().finish(flags).unwrap()
         };
 
         let builder = ObjectBuilder::new(isa.clone(), translation_unit, default_libcall_names());
         let module = ObjectModule::new(builder.unwrap());
-
         let ctx = codegen::Context::new();
-        let fctx = FunctionBuilderContext::new();
 
         Self {
             isa,
             module,
             codegen_ctx: ctx,
-            function_ctx: fctx,
+            function_ctx: Default::default(),
             regs: HashMap::new(),
             bblocks: HashMap::new(),
             vars: HashMap::new(),
@@ -106,7 +111,8 @@ impl ClifBackend {
             .declare_function(name, Linkage::Export, &signature)
             .unwrap();
 
-        let builder = FunctionBuilder::new(&mut self.codegen_ctx.func, &mut self.function_ctx);
+        let builder =
+            frontend::FunctionBuilder::new(&mut self.codegen_ctx.func, &mut self.function_ctx);
         builder.func.clear();
         builder.func.signature = signature;
 
@@ -137,15 +143,15 @@ impl ClifBackend {
 pub struct ClifTranslator<'a> {
     isa: Arc<dyn TargetIsa>,
     func_id: FuncId,
-    builder: FunctionBuilder<'a>,
+    builder: frontend::FunctionBuilder<'a>,
 
     regs: &'a mut HashMap<Reg, Value>,
-    vars: &'a mut HashMap<Place, Variable>,
+    vars: &'a mut HashMap<Place, frontend::Variable>,
     bblocks: &'a mut HashMap<BlockId, Block>,
 }
 
 impl<'a> ClifTranslator<'a> {
-    fn ins<'b>(&'b mut self) -> cranelift::frontend::FuncInstBuilder<'b, 'a> {
+    fn ins<'b>(&'b mut self) -> frontend::FuncInstBuilder<'b, 'a> {
         self.builder.ins()
     }
 

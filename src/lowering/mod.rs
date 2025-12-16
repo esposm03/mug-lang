@@ -3,10 +3,10 @@ use std::mem;
 use crate::{
     errors::{BinopTypeMismatchError, MugErr, Span, TypeMismatchError},
     mir::{
-        BasicBlock, Inst, Reg, TermInst, Typ, Val,
+        BasicBlock, Inst, Place, Reg, TermInst, Typ, Val,
         build::{BbBuilder, MirBuilder},
     },
-    parsing::ast::{BinOp, Expr, Lval, Stmt, Typ as AstTyp},
+    parsing::ast::{BinOp, Expr, Ident, Spanned, Stmt, Typ as AstTyp},
 };
 
 pub enum Event {
@@ -18,11 +18,57 @@ pub enum Event {
     EnableAutoSeal,
 }
 
+struct VariableRegistry {
+    vars: im::HashMap<Ident, Var>,
+    stack: Vec<im::HashMap<Ident, Var>>,
+}
+
+impl VariableRegistry {
+    fn new() -> Self {
+        Self {
+            vars: im::HashMap::new(),
+            stack: vec![],
+        }
+    }
+
+    fn get(&self, name: &Ident) -> Option<&Var> {
+        self.vars.get(name)
+    }
+
+    fn set(&mut self, name: Spanned<Ident>, place: Place, typ: AstTyp) {
+        self.vars.insert(
+            name.t,
+            Var {
+                typ,
+                place,
+                declared_at: name.span,
+            },
+        );
+    }
+
+    fn push_scope(&mut self) {
+        self.stack.push(self.vars.clone());
+    }
+
+    fn pop_scope(&mut self) {
+        self.vars = self.stack.pop().expect("Empty variable stack");
+    }
+}
+
+#[derive(Clone)]
+struct Var {
+    typ: AstTyp,
+    place: Place,
+    declared_at: Span,
+}
+
 pub struct Lower {
     mir: MirBuilder,
     builder: BbBuilder,
     events: Vec<Event>,
     errors: Vec<MugErr>,
+
+    vars: VariableRegistry,
 }
 
 impl Lower {
@@ -32,6 +78,7 @@ impl Lower {
         Lower {
             mir,
             builder,
+            vars: VariableRegistry::new(),
             events: vec![],
             errors: vec![],
         }
@@ -71,7 +118,11 @@ impl Lower {
             #[expect(unused)]
             Expr::UnOp { op, operand } => todo!(),
             #[expect(unused)]
-            Expr::Lval(lval) => todo!(),
+            Expr::Lval(ident) => {
+                if let Some(v) = self.vars.get(ident) {}
+
+                todo!()
+            }
             #[expect(unused)]
             Expr::Assignment { lhs, rhs } => todo!(),
             #[expect(unused)]
@@ -147,7 +198,7 @@ impl Lower {
     #[expect(unused)]
     pub fn lower_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::VarDecl { lhs, typ, rhs } => self.lower_var_decl(lhs, *typ, rhs),
+            Stmt::VarDecl { lhs, typ, rhs } => self.lower_var_decl(*lhs, *typ, rhs),
             #[expect(unused)]
             Stmt::Expr(expr) => todo!(),
             #[expect(unused)]
@@ -167,14 +218,35 @@ impl Lower {
     }
 
     #[allow(unused)]
-    fn lower_var_decl(&mut self, lhs: &Lval, ty: Option<(AstTyp, Span)>, rhs: &Expr) {
-        let rhs_dest = self.lower_expr(rhs);
-        let place = self.mir.place(&lhs.0);
+    fn lower_var_decl(&mut self, lhs: Spanned<Ident>, ty: Option<(AstTyp, Span)>, rhs: &Expr) {
+        let (mut typ, rhs_span, rhs_expr) = self.lower_expr(rhs);
+        let place = self.mir.place(&lhs.t.0);
 
-        // if !ty.compatible() {}
+        use crate::parsing::ast::TypCompatible;
+        if let Some((declared_type, loc)) = ty {
+            if !typ.compatible(declared_type) {
+                self.errors.push(Box::new(TypeMismatchError {
+                    span_total: todo!(),
+                    span1: todo!(),
+                    typ1: todo!(),
+                    span2: todo!(),
+                    typ2: todo!(),
+                }));
+            }
+            typ = declared_type;
+        } else {
+            typ = AstTyp::Error;
+        }
 
-        self.emit(Inst::Alloca(place, todo!()));
+        self.vars.set(lhs, place, typ);
+        self.emit(Inst::Alloca(place, convert_ast_typ(typ)));
+    }
+}
 
-        // self.emit(Inst::Store(place, todo!(), rhs_dest));
+fn convert_ast_typ(t: AstTyp) -> Typ {
+    match t {
+        AstTyp::Int => Typ::I64,
+        AstTyp::Bool => Typ::Bool,
+        AstTyp::Error => panic!("tried to convert ast::Typ::Error -> mir::Typ"),
     }
 }

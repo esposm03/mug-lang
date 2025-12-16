@@ -1,13 +1,26 @@
 #![allow(unused)]
 
-use std::fmt;
+use std::{fmt, ops::Deref};
 
-use display_tree::DisplayTree;
 use internment::Intern;
 
 use crate::errors::Span;
 
-#[derive(Clone, Copy, Debug, DisplayTree, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Spanned<T> {
+    pub t: T,
+    pub span: Span,
+}
+
+impl<T> Deref for Spanned<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.t
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Typ {
     Int,
     Bool,
@@ -90,43 +103,35 @@ impl std::fmt::Display for Unop {
     }
 }
 
-#[derive(Debug)]
-pub struct Lval(pub Intern<String>);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Ident(pub Intern<String>);
 
-impl std::fmt::Display for Lval {
+impl std::fmt::Display for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.0)
     }
 }
 
-#[derive(Debug, DisplayTree)]
+#[derive(Debug)]
 pub enum Expr {
-    Int(#[node_label] i64, #[ignore] Span),
+    Int(i64, #[ignore] Span),
     Bool(bool, #[ignore] Span),
     BinOp {
-        #[tree]
         left: Box<Expr>,
-        #[field_label]
         op: BinOp,
-        #[tree]
         right: Box<Expr>,
     },
     UnOp {
         op: Unop,
-        #[tree]
         operand: Box<Expr>,
     },
-    Lval(Lval),
+    Lval(Ident),
     Assignment {
-        #[field_label]
-        lhs: Lval,
-        #[tree]
+        lhs: Ident,
         rhs: Box<Expr>,
     },
     Call {
-        #[tree]
         function: Box<Expr>,
-        #[ignore_field]
         args: Vec<Expr>,
     },
 }
@@ -134,7 +139,7 @@ pub enum Expr {
 #[derive(Debug)]
 pub enum Stmt {
     VarDecl {
-        lhs: Lval,
+        lhs: Spanned<Ident>,
         typ: Option<(Typ, Span)>,
         rhs: Expr,
     },

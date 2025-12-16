@@ -28,7 +28,6 @@ impl fmt::Display for Val {
 impl fmt::Display for Typ {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let desc = match self {
-            Typ::Error => "<error>",
             Typ::I8 => "i8",
             Typ::I64 => "i64",
             Typ::Bool => "bool",
