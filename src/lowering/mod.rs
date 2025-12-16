@@ -101,7 +101,7 @@ impl Lower {
 
         match v {
             Val::I8(_) => todo!(),
-            Val::I64(_) => AstTyp::Int,
+            Val::I64(_) => AstTyp::I64,
             Val::False => AstTyp::Bool,
             Val::True => AstTyp::Bool,
         }
@@ -112,9 +112,7 @@ impl Lower {
         let (typ, loc) = match expr {
             Expr::Int(i, loc) => (self.imm(dest, Val::I64(*i)), loc),
             Expr::Bool(i, loc) => (self.imm(dest, if *i { Val::True } else { Val::False }), loc),
-            Expr::BinOp { left, op, right } => {
-                (self.lower_binop(dest, *op, left, right), &op.span())
-            }
+            Expr::BinOp { left, op, right } => (self.lower_binop(dest, *op, left, right), &op.span),
             #[expect(unused)]
             Expr::UnOp { op, operand } => todo!(),
             #[expect(unused)]
@@ -131,13 +129,19 @@ impl Lower {
         (typ, *loc, dest)
     }
 
-    pub fn lower_binop(&mut self, dest: Reg, op: BinOp, left: &Expr, right: &Expr) -> AstTyp {
+    pub fn lower_binop(
+        &mut self,
+        dest: Reg,
+        op: Spanned<BinOp>,
+        left: &Expr,
+        right: &Expr,
+    ) -> AstTyp {
         let (typ1, span1, val1) = self.lower_expr(left);
         let (typ2, span2, val2) = self.lower_expr(right);
 
         if typ1 != typ2 {
             self.errors.push(Box::new(TypeMismatchError {
-                span_total: op.span(),
+                span_total: op.span,
                 span1,
                 typ1,
                 span2,
@@ -146,49 +150,49 @@ impl Lower {
             return AstTyp::Error;
         }
 
-        let (out_typ, expected_typ) = match op {
-            BinOp::Sum(_)
-            | BinOp::Sub(_)
-            | BinOp::Mul(_)
-            | BinOp::Div(_)
-            | BinOp::Rem(_)
-            | BinOp::Lt(_)
-            | BinOp::Le(_)
-            | BinOp::Gt(_)
-            | BinOp::Ge(_) => (AstTyp::Int, AstTyp::Int),
-            BinOp::Lor(_) | BinOp::Land(_) => (AstTyp::Bool, AstTyp::Bool),
-            BinOp::Eq(_) => (AstTyp::Bool, typ1),
-            BinOp::NEq(_) => (AstTyp::Bool, typ1),
+        let (out_typ, expected_typ) = match op.t {
+            BinOp::Sum
+            | BinOp::Sub
+            | BinOp::Mul
+            | BinOp::Div
+            | BinOp::Rem
+            | BinOp::Lt
+            | BinOp::Le
+            | BinOp::Gt
+            | BinOp::Ge => (AstTyp::I64, AstTyp::I64),
+            BinOp::Lor | BinOp::Land => (AstTyp::Bool, AstTyp::Bool),
+            BinOp::Eq => (AstTyp::Bool, typ1),
+            BinOp::NEq => (AstTyp::Bool, typ1),
         };
         if expected_typ != typ1 {
             self.errors.push(Box::new(BinopTypeMismatchError {
-                span_total: op.span(),
-                op,
+                span_total: op.span,
+                op: op.t,
                 arg_types: typ1,
                 expected: expected_typ,
             }));
         }
 
         let mirtyp = match out_typ {
-            AstTyp::Int => Typ::I8,
+            AstTyp::I64 => Typ::I8,
             AstTyp::Bool => Typ::Bool,
             AstTyp::Error => unreachable!(),
         };
 
-        let constructor = match op {
-            BinOp::Sum(_) => Inst::Add,
-            BinOp::Sub(_) => todo!(),
-            BinOp::Mul(_) => todo!(),
-            BinOp::Div(_) => todo!(),
-            BinOp::Rem(_) => todo!(),
-            BinOp::Lt(_) => todo!(),
-            BinOp::Le(_) => todo!(),
-            BinOp::Gt(_) => todo!(),
-            BinOp::Ge(_) => todo!(),
-            BinOp::Lor(_) => todo!(),
-            BinOp::Land(_) => todo!(),
-            BinOp::Eq(_) => todo!(),
-            BinOp::NEq(_) => todo!(),
+        let constructor = match op.t {
+            BinOp::Sum => Inst::Add,
+            BinOp::Sub => todo!(),
+            BinOp::Mul => todo!(),
+            BinOp::Div => todo!(),
+            BinOp::Rem => todo!(),
+            BinOp::Lt => todo!(),
+            BinOp::Le => todo!(),
+            BinOp::Gt => todo!(),
+            BinOp::Ge => todo!(),
+            BinOp::Lor => todo!(),
+            BinOp::Land => todo!(),
+            BinOp::Eq => todo!(),
+            BinOp::NEq => todo!(),
         };
         self.builder.emit(constructor(dest, mirtyp, val1, val2));
 
@@ -245,7 +249,7 @@ impl Lower {
 
 fn convert_ast_typ(t: AstTyp) -> Typ {
     match t {
-        AstTyp::Int => Typ::I64,
+        AstTyp::I64 => Typ::I64,
         AstTyp::Bool => Typ::Bool,
         AstTyp::Error => panic!("tried to convert ast::Typ::Error -> mir::Typ"),
     }

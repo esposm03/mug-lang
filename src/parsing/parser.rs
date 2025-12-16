@@ -3,7 +3,7 @@ use chumsky::{input::ValueInput, prelude::*, select};
 use crate::{
     errors::{self, ParseError, Span},
     parsing::{
-        ast::{BinOp, Expr, Ident},
+        ast::{BinOp, Expr, Ident, Spanned},
         lexer::Token,
     },
 };
@@ -97,12 +97,12 @@ pub fn expr<'a, I: ParseInput<'a>>() -> impl Parser<'a, I, Expr, ParseExtra> {
         let atom = parens(atom.clone()).or(atom);
 
         let l1_binop = just(Mul)
-            .map_with(|_, e| BinOp::Mul(e.span()))
-            .or(just(Div).map_with(|_, e| BinOp::Div(e.span())))
-            .or(just(Rem).map_with(|_, e| BinOp::Rem(e.span())));
+            .map_with(|_, e| Spanned::new(BinOp::Mul, e.span()))
+            .or(just(Div).map_with(|_, e| Spanned::new(BinOp::Div, e.span())))
+            .or(just(Rem).map_with(|_, e| Spanned::new(BinOp::Rem, e.span())));
         let l2_binop = just(Plus)
-            .map_with(|_, e| BinOp::Sum(e.span()))
-            .or(just(Minus).map_with(|_, e| BinOp::Sub(e.span())));
+            .map_with(|_, e| Spanned::new(BinOp::Sum, e.span()))
+            .or(just(Minus).map_with(|_, e| Spanned::new(BinOp::Sub, e.span())));
 
         let product = atom
             .clone()
@@ -115,7 +115,7 @@ pub fn expr<'a, I: ParseInput<'a>>() -> impl Parser<'a, I, Expr, ParseExtra> {
     })
 }
 
-fn make_binop(a: Expr, (op, b): (BinOp, Expr)) -> Expr {
+fn make_binop(a: Expr, (op, b): (Spanned<BinOp>, Expr)) -> Expr {
     Expr::BinOp {
         op,
         left: Box::new(a),
