@@ -19,6 +19,9 @@ impl<'a, I: ParseInput<'a>, O, P: Parser<'a, I, O, ParseExtra> + Clone> MugParse
 
 // ===== Combinators =====
 
+#[allow(dead_code)]
+fn is_parser<'a, O, I: ParseInput<'a>>(_: &impl Parser<'a, I, O, ParseExtra>) {}
+
 fn comma_list<'a, I: ParseInput<'a>, O>(
     p: impl MugParser<'a, I, O>,
 ) -> impl MugParser<'a, I, Vec<O>> {
@@ -43,8 +46,76 @@ fn int_lit<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, (i64, Span)> {
     select! { Token::IntLit(x) = e => (x, e.span()) }.map_err_with_state(errors::wanted_int_lit)
 }
 
-pub fn ident<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
+fn positive_int<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
+    int_lit().map(|(x, loc)| Expr::Int(x, loc))
+}
+
+fn negative_int<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
+    just(Token::Minus)
+        .ignore_then(int_lit())
+        .map(|(x, loc)| Expr::Int(-x, loc))
+}
+
+fn bool<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
+    choice([just(Token::True).to(true), just(Token::False).to(false)])
+        .map_with(|b, e| Expr::Bool(b, e.span()))
+}
+
+fn binop<'a, I: ParseInput<'a>>(tok: Token, op: BinOp) -> impl MugParser<'a, I, Spanned<BinOp>> {
+    just(tok)
+        .to(op)
+        .map_with(|op, e| Spanned::new(op, e.span()))
+}
+
+fn ident<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
     select! { Token::Ident(x) => Expr::Lval(Ident(x)) }.map_err_with_state(errors::wanted_ident)
+}
+
+fn call<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
+    ident()
+        .then(parens_comma_list(expr.clone()))
+        .map(|(name, args)| Expr::Call {
+            function: Box::new(name),
+            args,
+        })
+}
+
+fn atom<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
+    let atom = call(expr)
+        .or(negative_int())
+        .or(positive_int())
+        .or(ident())
+        .or(bool());
+
+    parens(atom.clone()).or(atom)
+}
+
+pub fn expr<'a, I: ParseInput<'a>>() -> impl Parser<'a, I, Expr, ParseExtra> {
+    use Token::*;
+
+    recursive(|expr| {
+        let l1_binop = choice((
+            binop(Mul, BinOp::Mul),
+            binop(Div, BinOp::Div),
+            binop(Rem, BinOp::Rem),
+        ));
+        let l2_binop = choice([binop(Plus, BinOp::Sum), binop(Minus, BinOp::Sub)]);
+
+        let product = atom(expr.clone()).foldl(l1_binop.then(atom(expr)).repeated(), make_binop);
+        let sum = product
+            .clone()
+            .foldl(l2_binop.then(product).repeated(), make_binop);
+
+        sum
+    })
+}
+
+fn make_binop(a: Expr, (op, b): (Spanned<BinOp>, Expr)) -> Expr {
+    Expr::BinOp {
+        op,
+        left: Box::new(a),
+        right: Box::new(b),
+    }
 }
 
 #[test]
@@ -64,61 +135,4 @@ fn test_ident() {
     let str = Stream::from_iter(lexer).map(Span::new(filename, 0..src.len()), |ts| ts);
 
     ident().parse(str).unwrap();
-}
-
-fn call<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
-    ident()
-        .then(parens_comma_list(expr.clone()))
-        .map(|(name, args)| Expr::Call {
-            function: Box::new(name),
-            args,
-        })
-}
-
-#[allow(dead_code)]
-fn is_parser<'a, O, I: ParseInput<'a>>(_: &impl Parser<'a, I, O, ParseExtra>) {}
-
-pub fn expr<'a, I: ParseInput<'a>>() -> impl Parser<'a, I, Expr, ParseExtra> {
-    use Token::*;
-
-    let negative_int = just(Minus)
-        .ignore_then(int_lit())
-        .map(|(x, loc)| Expr::Int(-x, loc));
-    let positive_int = int_lit().map(|(x, loc)| Expr::Int(x, loc));
-    let bool = choice([just(True).to(true), just(False).to(false)])
-        .map_with(|b, e| Expr::Bool(b, e.span()));
-
-    recursive(|expr| {
-        let atom = call(expr)
-            .or(negative_int)
-            .or(positive_int)
-            .or(ident())
-            .or(bool);
-        let atom = parens(atom.clone()).or(atom);
-
-        let l1_binop = just(Mul)
-            .map_with(|_, e| Spanned::new(BinOp::Mul, e.span()))
-            .or(just(Div).map_with(|_, e| Spanned::new(BinOp::Div, e.span())))
-            .or(just(Rem).map_with(|_, e| Spanned::new(BinOp::Rem, e.span())));
-        let l2_binop = just(Plus)
-            .map_with(|_, e| Spanned::new(BinOp::Sum, e.span()))
-            .or(just(Minus).map_with(|_, e| Spanned::new(BinOp::Sub, e.span())));
-
-        let product = atom
-            .clone()
-            .foldl(l1_binop.then(atom.clone()).repeated(), make_binop);
-        let sum = product
-            .clone()
-            .foldl(l2_binop.then(product).repeated(), make_binop);
-
-        sum
-    })
-}
-
-fn make_binop(a: Expr, (op, b): (Spanned<BinOp>, Expr)) -> Expr {
-    Expr::BinOp {
-        op,
-        left: Box::new(a),
-        right: Box::new(b),
-    }
 }

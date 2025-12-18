@@ -111,11 +111,18 @@ pub enum Expr {
         op: Unop,
         operand: Box<Expr>,
     },
+
+    VarDecl {
+        lhs: Spanned<Ident>,
+        typ: Option<(Typ, Span)>,
+        rhs: Box<Expr>,
+    },
     Lval(Ident),
     Assignment {
         lhs: Ident,
         rhs: Box<Expr>,
     },
+
     Call {
         function: Box<Expr>,
         args: Vec<Expr>,
@@ -124,11 +131,6 @@ pub enum Expr {
 
 #[derive(Debug)]
 pub enum Stmt {
-    VarDecl {
-        lhs: Spanned<Ident>,
-        typ: Option<(Typ, Span)>,
-        rhs: Expr,
-    },
     Expr(Expr),
     IfThenElse {
         cond: Expr,

@@ -46,10 +46,12 @@ impl VariableRegistry {
         );
     }
 
+    #[expect(dead_code)]
     fn push_scope(&mut self) {
         self.stack.push(self.vars.clone());
     }
 
+    #[expect(dead_code)]
     fn pop_scope(&mut self) {
         self.vars = self.stack.pop().expect("Empty variable stack");
     }
@@ -57,8 +59,11 @@ impl VariableRegistry {
 
 #[derive(Clone)]
 struct Var {
+    #[expect(dead_code)]
     typ: AstTyp,
+    #[expect(dead_code)]
     place: Place,
+    #[expect(dead_code)]
     declared_at: Span,
 }
 
@@ -115,6 +120,10 @@ impl Lower {
             Expr::BinOp { left, op, right } => (self.lower_binop(dest, *op, left, right), &op.span),
             #[expect(unused)]
             Expr::UnOp { op, operand } => todo!(),
+            Expr::VarDecl { lhs, typ, rhs } => {
+                self.lower_var_decl(*lhs, *typ, rhs);
+                (AstTyp::Bool, &lhs.span)
+            }
             #[expect(unused)]
             Expr::Lval(ident) => {
                 if let Some(v) = self.vars.get(ident) {}
@@ -202,7 +211,6 @@ impl Lower {
     #[expect(unused)]
     pub fn lower_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::VarDecl { lhs, typ, rhs } => self.lower_var_decl(*lhs, *typ, rhs),
             #[expect(unused)]
             Stmt::Expr(expr) => todo!(),
             #[expect(unused)]
