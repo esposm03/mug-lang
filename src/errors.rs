@@ -4,13 +4,17 @@ use ariadne::{Color, ColorGenerator, Fmt, Label, Report, ReportKind};
 use chumsky::{DefaultExpected, label::LabelError, util::MaybeRef};
 use internment::Intern;
 
-use crate::parsing::{ast, lexer::Token, parser::ParseInput};
+use crate::parsing::{
+    ast,
+    lexer::Token,
+    parser::{MugParser, ParseInput},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
-    source: Intern<String>,
-    start: usize,
-    end: usize,
+    pub source: Intern<String>,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Display for Span {
@@ -153,19 +157,20 @@ impl MugError for BinopTypeMismatchError {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseExpected {
     Unknown,
     Identifier,
     IntLit,
+    BoolLit,
     Expression,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ParseError {
-    expected: ParseExpected,
-    found: Option<Token>,
-    span: Span,
+    pub expected: ParseExpected,
+    pub found: Option<Token>,
+    pub span: Span,
 }
 
 impl<'a, I: ParseInput<'a>> LabelError<'a, I, DefaultExpected<'a, Token>> for ParseError {
@@ -202,6 +207,7 @@ impl MugError for ParseError {
             ParseExpected::Unknown => "<unknown>",
             ParseExpected::Identifier => "an identifier",
             ParseExpected::IntLit => "an integer",
+            ParseExpected::BoolLit => "a boolean",
             ParseExpected::Expression => "an expression",
         };
         let found = self.found.unwrap_or(Token::Eof);
@@ -220,18 +226,16 @@ impl MugError for ParseError {
     }
 }
 
-pub fn wanted_ident(prev: ParseError, span: Span, _ctx: &mut ()) -> ParseError {
-    ParseError {
-        expected: ParseExpected::Identifier,
-        found: prev.found,
-        span,
-    }
+pub trait MugParserWanted<'a, I: ParseInput<'a>, O>: MugParser<'a, I, O> {
+    fn wanted(self, expected: ParseExpected) -> impl MugParser<'a, I, O>;
 }
 
-pub fn wanted_int_lit(prev: ParseError, span: Span, _ctx: &mut ()) -> ParseError {
-    ParseError {
-        expected: ParseExpected::IntLit,
-        found: prev.found,
-        span,
+impl<'a, I: ParseInput<'a>, O, P: MugParser<'a, I, O> + Clone> MugParserWanted<'a, I, O> for P {
+    fn wanted(self, expected: ParseExpected) -> impl MugParser<'a, I, O> {
+        self.map_err_with_state(move |prev, span, _ctx| ParseError {
+            expected,
+            found: prev.found,
+            span,
+        })
     }
 }

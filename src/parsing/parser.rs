@@ -1,7 +1,7 @@
 use chumsky::{input::ValueInput, prelude::*, select};
 
 use crate::{
-    errors::{self, ParseError, Span},
+    errors::{MugParserWanted, ParseError, ParseExpected, Span},
     parsing::{
         ast::{BinOp, Expr, Ident, Spanned},
         lexer::Token,
@@ -43,7 +43,7 @@ fn parens_comma_list<'a, I: ParseInput<'a>, O>(
 // ===== Atoms =====
 
 fn int_lit<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, (i64, Span)> {
-    select! { Token::IntLit(x) = e => (x, e.span()) }.map_err_with_state(errors::wanted_int_lit)
+    select! { Token::IntLit(x) = e => (x, e.span()) }.wanted(ParseExpected::IntLit)
 }
 
 fn positive_int<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
@@ -59,6 +59,7 @@ fn negative_int<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
 fn bool<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
     choice([just(Token::True).to(true), just(Token::False).to(false)])
         .map_with(|b, e| Expr::Bool(b, e.span()))
+        .wanted(ParseExpected::BoolLit)
 }
 
 fn binop<'a, I: ParseInput<'a>>(tok: Token, op: BinOp) -> impl MugParser<'a, I, Spanned<BinOp>> {
@@ -68,7 +69,7 @@ fn binop<'a, I: ParseInput<'a>>(tok: Token, op: BinOp) -> impl MugParser<'a, I, 
 }
 
 fn ident<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
-    select! { Token::Ident(x) => Expr::Lval(Ident(x)) }.map_err_with_state(errors::wanted_ident)
+    select! { Token::Ident(x) => Expr::Lval(Ident(x)) }.wanted(ParseExpected::Identifier)
 }
 
 fn call<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
@@ -121,18 +122,29 @@ fn make_binop(a: Expr, (op, b): (Spanned<BinOp>, Expr)) -> Expr {
 #[test]
 #[cfg(test)]
 fn test_ident() {
-    use chumsky::input::Stream;
+    use crate::{errors::ParseExpected::*, parsing::lexer::lex_str};
     use internment::Intern;
-    use logos::Logos;
-    let src = "123";
-    let filename = Intern::from_ref("what");
 
-    let lexer = Token::lexer(src).spanned().map(move |(tok, span)| {
-        let tok = tok.unwrap_or(Token::Error);
-        let span = Span::new(filename, span);
-        (tok, span)
-    });
-    let str = Stream::from_iter(lexer).map(Span::new(filename, 0..src.len()), |ts| ts);
+    macro_rules! case {
+        ($parser:expr, $src:expr, $expected:expr, $found:expr) => {
+            let errors = $parser.parse(lex_str($src)).into_errors();
+            assert_eq!(errors.len(), 1);
 
-    ident().parse(str).unwrap();
+            assert_eq!(
+                errors[0],
+                ParseError {
+                    expected: $expected,
+                    found: Some($found),
+                    span: Span {
+                        source: Intern::from_ref("test.mug"),
+                        start: 0,
+                        end: $src.len(),
+                    },
+                }
+            );
+        };
+    }
+
+    case!(ident(), "123", Identifier, Token::IntLit(123));
+    case!(bool(), "123", BoolLit, Token::IntLit(123));
 }

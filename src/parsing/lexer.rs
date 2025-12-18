@@ -104,6 +104,25 @@ fn ident<'a>(lex: &mut Lexer<'a, Token>) -> Intern<String> {
     Intern::from_ref(lex.slice())
 }
 
+#[cfg(test)]
+pub fn lex_str<'a>(src: &'a str) -> impl crate::parsing::parser::ParseInput<'a> {
+    use chumsky::{
+        input::{Input, Stream},
+        span::Span,
+    };
+
+    let filename = Intern::from_ref("test.mug");
+
+    let lexer = Token::lexer(src).spanned().map(move |(tok, span)| {
+        let tok = tok.unwrap_or(Token::Error);
+        let span = Span::new(filename, span);
+        (tok, span)
+    });
+    let str = Stream::from_iter(lexer).map(Span::new(filename, 0..src.len()), |ts| ts);
+
+    str
+}
+
 #[test]
 #[cfg(test)]
 fn lex_integers() {
