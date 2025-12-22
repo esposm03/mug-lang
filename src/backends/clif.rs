@@ -177,15 +177,21 @@ impl<'a> ClifTranslator<'a> {
             match inst {
                 Inst::Comment(_) => {}
                 Inst::Alloca(place, typ) => {
-                    let var = self.builder.declare_var(typ.into());
-                    self.vars.insert(place, var);
+                    if typ.is_storable() {
+                        let var = self.builder.declare_var(typ.into());
+                        self.vars.insert(place, var);
+                    }
                 }
-                Inst::Store(place, _typ, reg) => {
-                    self.builder.def_var(self.vars[&place], self.regs[&reg]);
+                Inst::Store(place, typ, reg) => {
+                    if typ.is_storable() {
+                        self.builder.def_var(self.vars[&place], self.regs[&reg]);
+                    }
                 }
-                Inst::Load(reg, _typ, place) => {
-                    let val = self.builder.use_var(self.vars[&place]);
-                    self.regs.insert(reg, val);
+                Inst::Load(reg, typ, place) => {
+                    if typ.is_storable() {
+                        let val = self.builder.use_var(self.vars[&place]);
+                        self.regs.insert(reg, val);
+                    }
                 }
                 Inst::Imm(reg, val) => {
                     let (typ, val) = match val {

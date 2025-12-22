@@ -1,4 +1,5 @@
 #![allow(unused)]
+use crate::parsing::ast::Typ;
 
 pub mod build;
 pub mod print;
@@ -15,22 +16,15 @@ pub struct Reg(pub Symbol);
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(pub usize);
 
-#[derive(Clone, Copy)]
-pub enum Typ {
-    I8,
-    I64,
-    Bool,
-    Unit,
-}
-
 impl From<Typ> for cranelift::prelude::Type {
+    #[track_caller]
     fn from(value: Typ) -> Self {
         use cranelift::prelude::types::*;
         match value {
-            Typ::I8 => I8,
             Typ::I64 => I64,
             Typ::Bool => I8,
             Typ::Unit => todo!(),
+            Typ::Error => todo!(),
         }
     }
 }

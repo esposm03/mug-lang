@@ -36,13 +36,24 @@ pub enum Typ {
 
 impl fmt::Display for Typ {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        let desc = match self {
+            Typ::I64 => "i64",
+            Typ::Bool => "bool",
+            Typ::Unit => "()",
+            Typ::Error => "<error>",
+        };
+
+        write!(f, "{desc}")
     }
 }
 
 impl Typ {
     pub fn is_valid(&self) -> bool {
         !matches!(self, Typ::Error)
+    }
+
+    pub fn is_storable(&self) -> bool {
+        !matches!(self, Typ::Error | Typ::Unit)
     }
 }
 
@@ -109,6 +120,7 @@ impl std::fmt::Display for Ident {
 pub enum Expr {
     Int(i64, Span),
     Bool(bool, Span),
+    Unit(Span),
     BinOp {
         left: Box<Expr>,
         op: Spanned<BinOp>,

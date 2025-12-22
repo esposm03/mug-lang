@@ -56,6 +56,12 @@ fn parens_comma_list<'a, I: ParseInput<'a>, O>(
 
 // ===== Atoms =====
 
+fn unit_lit<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
+    just(Token::LParen)
+        .then(just(Token::RParen))
+        .map_with(|_, s| Expr::Unit(s.span()))
+}
+
 fn int_lit<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, (i64, Span)> {
     select! { Token::IntLit(x) = e => (x, e.span()) }.wanted(ParseExpected::IntLit)
 }
@@ -129,7 +135,8 @@ fn atom<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugPar
         .or(negative_int())
         .or(positive_int())
         .or(ident().spanned().map(Expr::Lval))
-        .or(bool());
+        .or(bool())
+        .or(unit_lit());
 
     parens(atom.clone()).or(atom)
 }

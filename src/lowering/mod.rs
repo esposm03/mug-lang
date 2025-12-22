@@ -3,10 +3,10 @@ use std::mem;
 use crate::{
     errors::{BinopTypeMismatchError, MugErr, Span, TypeMismatchError, UnknownVarError},
     mir::{
-        BasicBlock, Inst, Place, Reg, TermInst, Typ, Val,
+        BasicBlock, Inst, Place, Reg, TermInst, Val,
         build::{BbBuilder, MirBuilder},
     },
-    parsing::ast::{BinOp, Expr, Ident, Spanned, Stmt, Typ as AstTyp, TypCompatible},
+    parsing::ast::{BinOp, Expr, Ident, Spanned, Stmt, Typ, TypCompatible},
 };
 
 pub enum Event {
@@ -35,7 +35,7 @@ impl VariableRegistry {
         self.vars.get(name)
     }
 
-    fn set(&mut self, name: Spanned<Ident>, place: Place, typ: AstTyp) {
+    fn set(&mut self, name: Spanned<Ident>, place: Place, typ: Typ) {
         self.vars.insert(
             name.t,
             Var {
@@ -59,7 +59,7 @@ impl VariableRegistry {
 
 #[derive(Clone)]
 struct Var {
-    typ: AstTyp,
+    typ: Typ,
     place: Place,
     #[expect(dead_code)]
     declared_at: Span,
@@ -99,14 +99,14 @@ impl Lower {
         self.builder.emit(inst);
     }
 
-    fn imm(&mut self, dest: Reg, v: Val) -> AstTyp {
+    fn imm(&mut self, dest: Reg, v: Val) -> Typ {
         self.emit(Inst::Imm(dest, v));
 
         match v {
             Val::I8(_) => todo!(),
-            Val::I64(_) => AstTyp::I64,
-            Val::False => AstTyp::Bool,
-            Val::True => AstTyp::Bool,
+            Val::I64(_) => Typ::I64,
+            Val::False => Typ::Bool,
+            Val::True => Typ::Bool,
         }
     }
 
@@ -118,8 +118,9 @@ impl Lower {
         v.cloned()
     }
 
-    pub fn lower_expr(&mut self, expr: &Expr, dest: Reg) -> (AstTyp, Span) {
+    pub fn lower_expr(&mut self, expr: &Expr, dest: Reg) -> (Typ, Span) {
         match expr {
+            Expr::Unit(loc) => (Typ::Unit, *loc),
             Expr::Int(i, loc) => (self.imm(dest, Val::I64(*i)), *loc),
             Expr::Bool(i, loc) => (
                 self.imm(dest, if *i { Val::True } else { Val::False }),
@@ -129,7 +130,7 @@ impl Lower {
             Expr::UnOp { .. } => todo!(),
             Expr::VarDecl { lhs, typ, rhs } => {
                 self.lower_var_decl(*lhs, *typ, rhs);
-                (AstTyp::Unit, lhs.span)
+                (Typ::Unit, lhs.span)
             }
             Expr::Lval(ident) => {
                 let v = self.vars.get(ident).unwrap();
@@ -157,7 +158,7 @@ impl Lower {
                     self.emit(Inst::Store(v.place, convert_ast_typ(rhs_typ), tmp));
                 }
 
-                (AstTyp::Unit, *loc)
+                (Typ::Unit, *loc)
             }
             Expr::Call { .. } => todo!(),
             Expr::Sequence(exprs) => {
@@ -174,13 +175,7 @@ impl Lower {
         }
     }
 
-    pub fn lower_binop(
-        &mut self,
-        dest: Reg,
-        op: Spanned<BinOp>,
-        left: &Expr,
-        right: &Expr,
-    ) -> AstTyp {
+    pub fn lower_binop(&mut self, dest: Reg, op: Spanned<BinOp>, left: &Expr, right: &Expr) -> Typ {
         let val1 = self.mir.temp();
         let val2 = self.mir.temp();
         let (typ1, span1) = self.lower_expr(left, val1);
@@ -194,7 +189,7 @@ impl Lower {
                 span2,
                 typ2,
             }));
-            return AstTyp::Error;
+            return Typ::Error;
         }
 
         let (out_typ, expected_typ) = match op.t {
@@ -206,10 +201,10 @@ impl Lower {
             | BinOp::Lt
             | BinOp::Le
             | BinOp::Gt
-            | BinOp::Ge => (AstTyp::I64, AstTyp::I64),
-            BinOp::Lor | BinOp::Land => (AstTyp::Bool, AstTyp::Bool),
-            BinOp::Eq => (AstTyp::Bool, typ1),
-            BinOp::NEq => (AstTyp::Bool, typ1),
+            | BinOp::Ge => (Typ::I64, Typ::I64),
+            BinOp::Lor | BinOp::Land => (Typ::Bool, Typ::Bool),
+            BinOp::Eq => (Typ::Bool, typ1),
+            BinOp::NEq => (Typ::Bool, typ1),
         };
         if expected_typ != typ1 && typ1.is_valid() {
             self.errors.push(Box::new(BinopTypeMismatchError {
@@ -221,10 +216,10 @@ impl Lower {
         }
 
         let mirtyp = match out_typ {
-            AstTyp::I64 => Typ::I64,
-            AstTyp::Bool => Typ::Bool,
-            AstTyp::Unit => Typ::Unit,
-            AstTyp::Error => unreachable!(),
+            Typ::I64 => Typ::I64,
+            Typ::Bool => Typ::Bool,
+            Typ::Unit => Typ::Unit,
+            Typ::Error => unreachable!(),
         };
 
         let constructor = match op.t {
@@ -265,11 +260,11 @@ impl Lower {
         let dest = self.mir.temp();
         let (_typ, _loc) = self.lower_expr(expr, dest);
         let block =
-            mem::replace(&mut self.builder, self.mir.block()).term(TermInst::Ret(Typ::I8, dest));
+            mem::replace(&mut self.builder, self.mir.block()).term(TermInst::Ret(Typ::I64, dest));
         self.events.push(Event::Block(block));
     }
 
-    fn lower_var_decl(&mut self, lhs: Spanned<Ident>, ty: Option<(AstTyp, Span)>, rhs: &Expr) {
+    fn lower_var_decl(&mut self, lhs: Spanned<Ident>, ty: Option<(Typ, Span)>, rhs: &Expr) {
         let rhs_expr = self.mir.temp();
         let (mut typ, _rhs_span) = self.lower_expr(rhs, rhs_expr);
         let place = self.mir.place(&lhs.t.0);
@@ -298,11 +293,11 @@ impl Lower {
 }
 
 #[track_caller]
-fn convert_ast_typ(t: AstTyp) -> Typ {
+fn convert_ast_typ(t: Typ) -> Typ {
     match t {
-        AstTyp::I64 => Typ::I64,
-        AstTyp::Bool => Typ::Bool,
-        AstTyp::Error => panic!("tried to convert ast::Typ::Error -> mir::Typ"),
-        AstTyp::Unit => todo!(),
+        Typ::I64 => Typ::I64,
+        Typ::Bool => Typ::Bool,
+        Typ::Unit => Typ::Unit,
+        Typ::Error => panic!("tried to convert ast::Typ::Error -> mir::Typ"),
     }
 }
