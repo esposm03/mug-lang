@@ -12,7 +12,7 @@ use crate::{
     errors::{MugErr, Span},
     linker::link,
     lowering::{Event, Lower},
-    parsing::{lexer::Token, parser::expr},
+    parsing::{lexer::Token, parser::expr_sequence},
 };
 
 mod backends;
@@ -50,7 +50,7 @@ fn run<'a>(args: &Args) -> Result<(), Vec<MugErr>> {
     });
     let str = Stream::from_iter(lexer).map(Span::new(filename, 0..src.len()), |ts| ts);
 
-    let ast = expr()
+    let ast = expr_sequence()
         .parse(str)
         .into_result()
         .map_err(|e| e.into_iter().map(From::from).collect::<Vec<_>>())?;

@@ -112,17 +112,19 @@ impl Lower {
         }
     }
 
-    pub fn lower_expr(&mut self, expr: &Expr) -> (AstTyp, Span, Reg) {
-        let dest = self.mir.temp();
-        let (typ, loc) = match expr {
-            Expr::Int(i, loc) => (self.imm(dest, Val::I64(*i)), loc),
-            Expr::Bool(i, loc) => (self.imm(dest, if *i { Val::True } else { Val::False }), loc),
-            Expr::BinOp { left, op, right } => (self.lower_binop(dest, *op, left, right), &op.span),
+    pub fn lower_expr(&mut self, expr: &Expr, dest: Reg) -> (AstTyp, Span) {
+        match expr {
+            Expr::Int(i, loc) => (self.imm(dest, Val::I64(*i)), *loc),
+            Expr::Bool(i, loc) => (
+                self.imm(dest, if *i { Val::True } else { Val::False }),
+                *loc,
+            ),
+            Expr::BinOp { left, op, right } => (self.lower_binop(dest, *op, left, right), op.span),
             #[expect(unused)]
             Expr::UnOp { op, operand } => todo!(),
             Expr::VarDecl { lhs, typ, rhs } => {
                 self.lower_var_decl(*lhs, *typ, rhs);
-                (AstTyp::Bool, &lhs.span)
+                (AstTyp::Bool, lhs.span)
             }
             #[expect(unused)]
             Expr::Lval(ident) => {
@@ -134,8 +136,18 @@ impl Lower {
             Expr::Assignment { lhs, rhs } => todo!(),
             #[expect(unused)]
             Expr::Call { function, args } => todo!(),
-        };
-        (typ, *loc, dest)
+            Expr::Sequence(exprs) => {
+                if exprs.len() >= 2 {
+                    for expr in &exprs[..exprs.len() - 1] {
+                        let temp = self.mir.temp();
+                        self.lower_expr(expr, temp);
+                    }
+                }
+
+                let last = &exprs[exprs.len() - 1];
+                self.lower_expr(last, dest)
+            }
+        }
     }
 
     pub fn lower_binop(
@@ -145,8 +157,10 @@ impl Lower {
         left: &Expr,
         right: &Expr,
     ) -> AstTyp {
-        let (typ1, span1, val1) = self.lower_expr(left);
-        let (typ2, span2, val2) = self.lower_expr(right);
+        let val1 = self.mir.temp();
+        let val2 = self.mir.temp();
+        let (typ1, span1) = self.lower_expr(left, val1);
+        let (typ2, span2) = self.lower_expr(right, val2);
 
         if typ1 != typ2 {
             self.errors.push(Box::new(TypeMismatchError {
@@ -223,15 +237,17 @@ impl Lower {
 
     pub fn lower_return(&mut self, expr: &Expr) {
         // TODO: check return type
-        let (_typ, _loc, expr) = self.lower_expr(expr);
+        let dest = self.mir.temp();
+        let (_typ, _loc) = self.lower_expr(expr, dest);
         let block =
-            mem::replace(&mut self.builder, self.mir.block()).term(TermInst::Ret(Typ::I8, expr));
+            mem::replace(&mut self.builder, self.mir.block()).term(TermInst::Ret(Typ::I8, dest));
         self.events.push(Event::Block(block));
     }
 
     #[allow(unused)]
     fn lower_var_decl(&mut self, lhs: Spanned<Ident>, ty: Option<(AstTyp, Span)>, rhs: &Expr) {
-        let (mut typ, rhs_span, rhs_expr) = self.lower_expr(rhs);
+        let rhs_expr = self.mir.temp();
+        let (mut typ, rhs_span) = self.lower_expr(rhs, rhs_expr);
         let place = self.mir.place(&lhs.t.0);
 
         use crate::parsing::ast::TypCompatible;

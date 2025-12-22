@@ -39,7 +39,7 @@ impl fmt::Display for Typ {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BinOp {
     Sum,
     Sub,
@@ -77,7 +77,7 @@ impl std::fmt::Display for BinOp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Unop {
     Neg,
     Lnot,
@@ -98,7 +98,7 @@ impl std::fmt::Display for Ident {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Expr {
     Int(i64, Span),
     Bool(bool, Span),
@@ -127,6 +127,7 @@ pub enum Expr {
         function: Box<Expr>,
         args: Vec<Expr>,
     },
+    Sequence(Vec<Expr>),
 }
 
 #[derive(Debug)]

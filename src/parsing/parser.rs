@@ -30,6 +30,14 @@ fn comma_list<'a, I: ParseInput<'a>, O>(
         .collect::<Vec<_>>()
 }
 
+fn semicolon_list<'a, I: ParseInput<'a>, O>(
+    p: impl MugParser<'a, I, O>,
+) -> impl MugParser<'a, I, Vec<O>> {
+    p.separated_by(just(Token::Semicolon).repeated().at_least(1))
+        .allow_trailing()
+        .collect::<Vec<_>>()
+}
+
 fn parens<'a, I: ParseInput<'a>, O>(p: impl MugParser<'a, I, O>) -> impl MugParser<'a, I, O> {
     p.delimited_by(just(Token::LParen), just(Token::RParen))
 }
@@ -91,8 +99,14 @@ fn atom<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugPar
     parens(atom.clone()).or(atom)
 }
 
-pub fn expr<'a, I: ParseInput<'a>>() -> impl Parser<'a, I, Expr, ParseExtra> {
+pub fn expr<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
     use Token::*;
+
+    let make_binop = |a, (op, b)| Expr::BinOp {
+        op,
+        left: Box::new(a),
+        right: Box::new(b),
+    };
 
     recursive(|expr| {
         let l1_binop = choice((
@@ -111,21 +125,17 @@ pub fn expr<'a, I: ParseInput<'a>>() -> impl Parser<'a, I, Expr, ParseExtra> {
     })
 }
 
-fn make_binop(a: Expr, (op, b): (Spanned<BinOp>, Expr)) -> Expr {
-    Expr::BinOp {
-        op,
-        left: Box::new(a),
-        right: Box::new(b),
-    }
+pub fn expr_sequence<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
+    semicolon_list(expr()).map(Expr::Sequence)
 }
 
-#[test]
 #[cfg(test)]
-fn test_ident() {
-    use crate::{errors::ParseExpected::*, parsing::lexer::lex_str};
+mod testutils {
     use internment::Intern;
 
-    macro_rules! case {
+    use crate::{errors::Span, parsing::ast::Ident};
+
+    macro_rules! parse_err {
         ($parser:expr, $src:expr, $expected:expr, $found:expr) => {
             let errors = $parser.parse(lex_str($src)).into_errors();
             assert_eq!(errors.len(), 1);
@@ -135,16 +145,57 @@ fn test_ident() {
                 ParseError {
                     expected: $expected,
                     found: Some($found),
-                    span: Span {
-                        source: Intern::from_ref("test.mug"),
-                        start: 0,
-                        end: $src.len(),
-                    },
+                    span: testutils::span(0, $src.len()),
                 }
             );
         };
     }
+    pub(super) use parse_err;
 
-    case!(ident(), "123", Identifier, Token::IntLit(123));
-    case!(bool(), "123", BoolLit, Token::IntLit(123));
+    macro_rules! parse_ok {
+        ($parser:expr, $src:expr, $expected:expr) => {
+            assert_eq!($parser.parse(lex_str($src)).unwrap(), $expected)
+        };
+    }
+    pub(super) use parse_ok;
+
+    pub fn ident(s: &str) -> Ident {
+        Ident(Intern::from_ref(s))
+    }
+
+    pub fn span(start: usize, end: usize) -> Span {
+        let source = internment::Intern::from_ref("test.mug");
+        Span { source, start, end }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::testutils::{parse_err, parse_ok};
+    use super::*;
+    use crate::{errors::ParseExpected::*, parsing::lexer::lex_str};
+
+    #[test]
+    fn test_ident() {
+        parse_err!(ident(), "123", Identifier, Token::IntLit(123));
+        parse_ok!(ident(), "_123", Expr::Lval(testutils::ident("_123")));
+        parse_ok!(ident(), "abc", Expr::Lval(testutils::ident("abc")));
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_expr_sequence() {
+        parse_ok!(expr_sequence(), "1; 2", Expr::Sequence(vec![
+            Expr::Int(1, testutils::span(0, 1)),
+            Expr::Int(2, testutils::span(3, 4)),
+        ]));
+        parse_ok!(expr_sequence(), "1; 2;", Expr::Sequence(vec![
+            Expr::Int(1, testutils::span(0, 1)),
+            Expr::Int(2, testutils::span(3, 4)),
+        ]));
+        parse_ok!(expr_sequence(), "1;; 2;", Expr::Sequence(vec![
+            Expr::Int(1, testutils::span(0, 1)),
+            Expr::Int(2, testutils::span(4, 5)),
+        ]));
+    }
 }
