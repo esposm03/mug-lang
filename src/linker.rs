@@ -20,7 +20,7 @@ pub fn link(output: &Path, objs: &[&Path], triple: &Triple) {
 
     linker.arg("-o").arg(output).args(objs);
 
-    if is_apple(&triple) {
+    if is_apple(triple) {
         linker
             .arg("-platform_version")
             .arg("macos")

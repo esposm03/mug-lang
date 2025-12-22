@@ -117,7 +117,7 @@ impl MugError for TypeMismatchError {
         let mut colors = ColorGenerator::new();
         Report::build(ReportKind::Error, self.span_total)
             // .with_code(3)
-            .with_message(format!("Incompatible types"))
+            .with_message("Incompatible types")
             .with_label(
                 Label::new(self.span1)
                     .with_message(format!("This is of type {}", self.typ1.fg(colors.next()))),

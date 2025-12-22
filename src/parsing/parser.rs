@@ -143,6 +143,7 @@ pub fn expr<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
             .clone()
             .foldl(l2_binop.then(product).repeated(), make_binop);
 
+        #[allow(clippy::let_and_return)]
         sum
     })
 }

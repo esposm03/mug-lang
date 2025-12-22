@@ -39,7 +39,7 @@ pub struct Args {
     input: String,
 }
 
-fn run<'a>(args: &Args) -> Result<(), Vec<MugErr>> {
+fn run(args: &Args) -> Result<(), Vec<MugErr>> {
     let src = fs::read_to_string(&args.input).map_err(|e| errors::reading_file(&args.input, e))?;
     let filename = Intern::from_ref(&args.input);
 
@@ -65,7 +65,7 @@ fn run<'a>(args: &Args) -> Result<(), Vec<MugErr>> {
     });
     events.insert(0, Event::Function("main".to_string())); // TODO: remove this
 
-    let object = clif::handle_events(&args, events);
+    let object = clif::handle_events(args, events);
 
     let objpath = NamedTempFile::with_suffix(".o").unwrap();
     fs::write(objpath.path(), object).unwrap();

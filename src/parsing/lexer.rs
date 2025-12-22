@@ -97,7 +97,7 @@ impl std::fmt::Display for Token {
 
 fn int_10<'a>(lex: &mut Lexer<'a, Token>) -> i64 {
     let slice = lex.slice().replace("_", "");
-    i64::from_str_radix(&slice, 10).unwrap()
+    slice.parse().unwrap()
 }
 
 fn ident<'a>(lex: &mut Lexer<'a, Token>) -> Intern<String> {

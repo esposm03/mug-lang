@@ -126,7 +126,7 @@ impl ClifBackend {
         }
     }
 
-    fn finish_function<'a>(&'a mut self, func_id: FuncId) {
+    fn finish_function(&mut self, func_id: FuncId) {
         self.module
             .define_function(func_id, &mut self.codegen_ctx)
             .unwrap();
@@ -234,10 +234,10 @@ impl<'a> ClifTranslator<'a> {
     #[must_use = "Pass the FuncId to `ClifTranslator::finish_function`"]
     fn finish(mut self) -> FuncId {
         let mut str = String::new();
-        codegen::write_function(&mut str, &self.builder.func).unwrap();
+        codegen::write_function(&mut str, self.builder.func).unwrap();
         println!("{str}");
 
-        codegen::verify_function(&self.builder.func, self.isa.as_ref()).expect("Verifier error");
+        codegen::verify_function(self.builder.func, self.isa.as_ref()).expect("Verifier error");
         self.builder.seal_all_blocks();
         self.builder.finalize();
 
