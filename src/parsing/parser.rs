@@ -14,8 +14,14 @@ impl<'a, I: ValueInput<'a, Token = Token, Span = Span>> ParseInput<'a> for I {}
 /// "Settings" for the parsers.
 type ParseExtra = extra::Err<ParseError>;
 
-pub trait MugParser<'a, I: ParseInput<'a>, O>: Parser<'a, I, O, ParseExtra> + Clone {}
-impl<'a, I: ParseInput<'a>, O, P: Parser<'a, I, O, ParseExtra> + Clone> MugParser<'a, I, O> for P {}
+pub trait MugParser<'a, I: ParseInput<'a>, O>: Parser<'a, I, O, ParseExtra> + Clone {
+    fn spanned(self) -> impl MugParser<'a, I, crate::parsing::ast::Spanned<O>>;
+}
+impl<'a, I: ParseInput<'a>, O, P: Parser<'a, I, O, ParseExtra> + Clone> MugParser<'a, I, O> for P {
+    fn spanned(self) -> impl MugParser<'a, I, crate::parsing::ast::Spanned<O>> {
+        self.map_with(|t, s| Spanned { t, span: s.span() })
+    }
+}
 
 // ===== Combinators =====
 
@@ -76,24 +82,40 @@ fn binop<'a, I: ParseInput<'a>>(tok: Token, op: BinOp) -> impl MugParser<'a, I, 
         .map_with(|op, e| Spanned::new(op, e.span()))
 }
 
-fn ident<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
-    select! { Token::Ident(x) => Expr::Lval(Ident(x)) }.wanted(ParseExpected::Identifier)
+fn ident<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Ident> {
+    select! { Token::Ident(x) => Ident(x) }.wanted(ParseExpected::Identifier)
 }
 
 fn call<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
     ident()
+        .spanned()
         .then(parens_comma_list(expr.clone()))
         .map(|(name, args)| Expr::Call {
-            function: Box::new(name),
+            function: Box::new(Expr::Lval(name)),
             args,
         })
 }
 
+fn vardecl<'a, I: ParseInput<'a>>(
+    expr: impl MugParser<'a, I, Expr>,
+) -> impl MugParser<'a, I, Expr> {
+    just(Token::Let)
+        .ignore_then(ident().spanned())
+        .then_ignore(just(Token::Assign))
+        .then(expr)
+        .map(|(name, expr)| Expr::VarDecl {
+            lhs: name,
+            typ: None,
+            rhs: Box::new(expr),
+        })
+}
+
 fn atom<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
-    let atom = call(expr)
+    let atom = vardecl(expr.clone())
+        .or(call(expr))
         .or(negative_int())
         .or(positive_int())
-        .or(ident())
+        .or(ident().spanned().map(Expr::Lval))
         .or(bool());
 
     parens(atom.clone()).or(atom)
@@ -178,8 +200,8 @@ mod tests {
     #[test]
     fn test_ident() {
         parse_err!(ident(), "123", Identifier, Token::IntLit(123));
-        parse_ok!(ident(), "_123", Expr::Lval(testutils::ident("_123")));
-        parse_ok!(ident(), "abc", Expr::Lval(testutils::ident("abc")));
+        parse_ok!(ident(), "_123", testutils::ident("_123"));
+        parse_ok!(ident(), "abc", testutils::ident("abc"));
     }
 
     #[test]

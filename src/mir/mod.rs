@@ -20,6 +20,7 @@ pub enum Typ {
     I8,
     I64,
     Bool,
+    Unit,
 }
 
 impl From<Typ> for cranelift::prelude::Type {
@@ -29,6 +30,7 @@ impl From<Typ> for cranelift::prelude::Type {
             Typ::I8 => I8,
             Typ::I64 => I64,
             Typ::Bool => I8,
+            Typ::Unit => todo!(),
         }
     }
 }

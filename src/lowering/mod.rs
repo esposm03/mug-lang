@@ -59,9 +59,7 @@ impl VariableRegistry {
 
 #[derive(Clone)]
 struct Var {
-    #[expect(dead_code)]
     typ: AstTyp,
-    #[expect(dead_code)]
     place: Place,
     #[expect(dead_code)]
     declared_at: Span,
@@ -124,13 +122,15 @@ impl Lower {
             Expr::UnOp { op, operand } => todo!(),
             Expr::VarDecl { lhs, typ, rhs } => {
                 self.lower_var_decl(*lhs, *typ, rhs);
-                (AstTyp::Bool, lhs.span)
+                (AstTyp::Unit, lhs.span)
             }
-            #[expect(unused)]
             Expr::Lval(ident) => {
-                if let Some(v) = self.vars.get(ident) {}
-
-                todo!()
+                let v = self.vars.get(ident).unwrap();
+                let res = (v.typ, ident.span);
+                if v.typ.is_valid() {
+                    self.emit(Inst::Load(dest, convert_ast_typ(v.typ), v.place));
+                }
+                res
             }
             #[expect(unused)]
             Expr::Assignment { lhs, rhs } => todo!(),
@@ -162,7 +162,7 @@ impl Lower {
         let (typ1, span1) = self.lower_expr(left, val1);
         let (typ2, span2) = self.lower_expr(right, val2);
 
-        if typ1 != typ2 {
+        if typ1 != typ2 && typ1.is_valid() && typ2.is_valid() {
             self.errors.push(Box::new(TypeMismatchError {
                 span_total: op.span,
                 span1,
@@ -187,7 +187,7 @@ impl Lower {
             BinOp::Eq => (AstTyp::Bool, typ1),
             BinOp::NEq => (AstTyp::Bool, typ1),
         };
-        if expected_typ != typ1 {
+        if expected_typ != typ1 && typ1.is_valid() {
             self.errors.push(Box::new(BinopTypeMismatchError {
                 span_total: op.span,
                 op: op.t,
@@ -197,8 +197,9 @@ impl Lower {
         }
 
         let mirtyp = match out_typ {
-            AstTyp::I64 => Typ::I8,
+            AstTyp::I64 => Typ::I64,
             AstTyp::Bool => Typ::Bool,
+            AstTyp::Unit => Typ::Unit,
             AstTyp::Error => unreachable!(),
         };
 
@@ -244,37 +245,40 @@ impl Lower {
         self.events.push(Event::Block(block));
     }
 
-    #[allow(unused)]
     fn lower_var_decl(&mut self, lhs: Spanned<Ident>, ty: Option<(AstTyp, Span)>, rhs: &Expr) {
         let rhs_expr = self.mir.temp();
-        let (mut typ, rhs_span) = self.lower_expr(rhs, rhs_expr);
+        let (mut typ, _rhs_span) = self.lower_expr(rhs, rhs_expr);
         let place = self.mir.place(&lhs.t.0);
 
         use crate::parsing::ast::TypCompatible;
-        if let Some((declared_type, loc)) = ty {
+        if let Some((declared_type, _loc)) = ty {
             if !typ.compatible(declared_type) {
-                self.errors.push(Box::new(TypeMismatchError {
-                    span_total: todo!(),
-                    span1: todo!(),
-                    typ1: todo!(),
-                    span2: todo!(),
-                    typ2: todo!(),
-                }));
+                // self.errors.push(Box::new(TypeMismatchError {
+                //     span_total: todo!(),
+                //     span1: todo!(),
+                //     typ1: todo!(),
+                //     span2: todo!(),
+                //     typ2: todo!(),
+                // }));
+                todo!("Need to push a TypeMismatchError")
             }
             typ = declared_type;
-        } else {
-            typ = AstTyp::Error;
         }
 
         self.vars.set(lhs, place, typ);
-        self.emit(Inst::Alloca(place, convert_ast_typ(typ)));
+        if typ.is_valid() {
+            self.emit(Inst::Alloca(place, convert_ast_typ(typ)));
+            self.emit(Inst::Store(place, convert_ast_typ(typ), rhs_expr));
+        }
     }
 }
 
+#[track_caller]
 fn convert_ast_typ(t: AstTyp) -> Typ {
     match t {
         AstTyp::I64 => Typ::I64,
         AstTyp::Bool => Typ::Bool,
         AstTyp::Error => panic!("tried to convert ast::Typ::Error -> mir::Typ"),
+        AstTyp::Unit => todo!(),
     }
 }

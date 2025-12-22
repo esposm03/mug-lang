@@ -30,12 +30,19 @@ impl<T> Deref for Spanned<T> {
 pub enum Typ {
     I64,
     Bool,
+    Unit,
     Error,
 }
 
 impl fmt::Display for Typ {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+impl Typ {
+    pub fn is_valid(&self) -> bool {
+        !matches!(self, Typ::Error)
     }
 }
 
@@ -117,7 +124,7 @@ pub enum Expr {
         typ: Option<(Typ, Span)>,
         rhs: Box<Expr>,
     },
-    Lval(Ident),
+    Lval(Spanned<Ident>),
     Assignment {
         lhs: Ident,
         rhs: Box<Expr>,

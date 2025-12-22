@@ -31,9 +31,10 @@ impl fmt::Display for Typ {
             Typ::I8 => "i8",
             Typ::I64 => "i64",
             Typ::Bool => "bool",
+            Typ::Unit => "()",
         };
 
-        write!(f, "{desc}",)
+        write!(f, "{desc}")
     }
 }
 
