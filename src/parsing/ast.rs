@@ -126,8 +126,9 @@ pub enum Expr {
     },
     Lval(Spanned<Ident>),
     Assignment {
-        lhs: Ident,
+        lhs: Spanned<Ident>,
         rhs: Box<Expr>,
+        loc: Span,
     },
 
     Call {

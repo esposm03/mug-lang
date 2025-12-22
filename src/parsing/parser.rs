@@ -96,12 +96,24 @@ fn call<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugPar
         })
 }
 
+fn assign<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
+    ident()
+        .spanned()
+        .then_ignore(just(Token::Eq))
+        .then(expr)
+        .map_with(|(lhs, rhs), s| Expr::Assignment {
+            lhs,
+            rhs: Box::new(rhs),
+            loc: s.span(),
+        })
+}
+
 fn vardecl<'a, I: ParseInput<'a>>(
     expr: impl MugParser<'a, I, Expr>,
 ) -> impl MugParser<'a, I, Expr> {
     just(Token::Let)
         .ignore_then(ident().spanned())
-        .then_ignore(just(Token::Assign))
+        .then_ignore(just(Token::Eq))
         .then(expr)
         .map(|(name, expr)| Expr::VarDecl {
             lhs: name,
@@ -112,6 +124,7 @@ fn vardecl<'a, I: ParseInput<'a>>(
 
 fn atom<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
     let atom = vardecl(expr.clone())
+        .or(assign(expr.clone()))
         .or(call(expr))
         .or(negative_int())
         .or(positive_int())
@@ -132,9 +145,9 @@ pub fn expr<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
 
     recursive(|expr| {
         let l1_binop = choice((
-            binop(Mul, BinOp::Mul),
-            binop(Div, BinOp::Div),
-            binop(Rem, BinOp::Rem),
+            binop(Star, BinOp::Mul),
+            binop(Slash, BinOp::Div),
+            binop(Percent, BinOp::Rem),
         ));
         let l2_binop = choice([binop(Plus, BinOp::Sum), binop(Minus, BinOp::Sub)]);
 

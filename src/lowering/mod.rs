@@ -1,12 +1,12 @@
 use std::mem;
 
 use crate::{
-    errors::{BinopTypeMismatchError, MugErr, Span, TypeMismatchError},
+    errors::{BinopTypeMismatchError, MugErr, Span, TypeMismatchError, UnknownVarError},
     mir::{
         BasicBlock, Inst, Place, Reg, TermInst, Typ, Val,
         build::{BbBuilder, MirBuilder},
     },
-    parsing::ast::{BinOp, Expr, Ident, Spanned, Stmt, Typ as AstTyp},
+    parsing::ast::{BinOp, Expr, Ident, Spanned, Stmt, Typ as AstTyp, TypCompatible},
 };
 
 pub enum Event {
@@ -110,6 +110,14 @@ impl Lower {
         }
     }
 
+    fn get_var(&mut self, name: &Spanned<Ident>) -> Option<Var> {
+        let v = self.vars.get(name);
+        if v.is_none() {
+            self.errors.push(Box::new(UnknownVarError(*name)))
+        }
+        v.cloned()
+    }
+
     pub fn lower_expr(&mut self, expr: &Expr, dest: Reg) -> (AstTyp, Span) {
         match expr {
             Expr::Int(i, loc) => (self.imm(dest, Val::I64(*i)), *loc),
@@ -118,8 +126,7 @@ impl Lower {
                 *loc,
             ),
             Expr::BinOp { left, op, right } => (self.lower_binop(dest, *op, left, right), op.span),
-            #[expect(unused)]
-            Expr::UnOp { op, operand } => todo!(),
+            Expr::UnOp { .. } => todo!(),
             Expr::VarDecl { lhs, typ, rhs } => {
                 self.lower_var_decl(*lhs, *typ, rhs);
                 (AstTyp::Unit, lhs.span)
@@ -132,10 +139,27 @@ impl Lower {
                 }
                 res
             }
-            #[expect(unused)]
-            Expr::Assignment { lhs, rhs } => todo!(),
-            #[expect(unused)]
-            Expr::Call { function, args } => todo!(),
+            Expr::Assignment { lhs, rhs, loc } => {
+                let tmp = self.mir.temp();
+                let (rhs_typ, rhs_span) = self.lower_expr(rhs, tmp);
+
+                if let Some(v) = self.get_var(lhs) {
+                    if !v.typ.compatible(rhs_typ) {
+                        self.errors.push(Box::new(TypeMismatchError {
+                            span_total: *loc,
+                            span1: lhs.span,
+                            typ1: v.typ,
+                            span2: rhs_span,
+                            typ2: rhs_typ,
+                        }));
+                    }
+
+                    self.emit(Inst::Store(v.place, convert_ast_typ(rhs_typ), tmp));
+                }
+
+                (AstTyp::Unit, *loc)
+            }
+            Expr::Call { .. } => todo!(),
             Expr::Sequence(exprs) => {
                 if exprs.len() >= 2 {
                     for expr in &exprs[..exprs.len() - 1] {

@@ -11,11 +11,11 @@ pub enum Token {
     #[token("-")]
     Minus,
     #[token("*")]
-    Mul,
+    Star,
     #[token("/")]
-    Div,
+    Slash,
     #[token("%")]
-    Rem,
+    Percent,
     #[token("<")]
     Lt,
     #[token("<=")]
@@ -31,13 +31,13 @@ pub enum Token {
     #[token("!")]
     Lnot,
     #[token("==")]
-    Eq,
+    EqEq,
     #[token("!=")]
     NEq,
     #[token("let")]
     Let,
     #[token("=")]
-    Assign,
+    Eq,
     #[token(";")]
     Semicolon,
     #[token(".")]
@@ -67,9 +67,9 @@ impl std::fmt::Display for Token {
             Token::Eof => write!(f, "<eof>"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
-            Token::Mul => write!(f, "*"),
-            Token::Div => write!(f, "/"),
-            Token::Rem => write!(f, "%"),
+            Token::Star => write!(f, "*"),
+            Token::Slash => write!(f, "/"),
+            Token::Percent => write!(f, "%"),
             Token::Lt => write!(f, "<"),
             Token::Le => write!(f, "<="),
             Token::Gt => write!(f, ">"),
@@ -77,10 +77,10 @@ impl std::fmt::Display for Token {
             Token::Lor => write!(f, "||"),
             Token::Land => write!(f, "&&"),
             Token::Lnot => write!(f, "!"),
-            Token::Eq => write!(f, "=="),
+            Token::EqEq => write!(f, "=="),
             Token::NEq => write!(f, "!="),
             Token::Let => write!(f, "let"),
-            Token::Assign => write!(f, "="),
+            Token::Eq => write!(f, "="),
             Token::Semicolon => write!(f, ";"),
             Token::Dot => write!(f, "."),
             Token::Return => write!(f, "return"),

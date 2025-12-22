@@ -5,7 +5,7 @@ use chumsky::{DefaultExpected, label::LabelError, util::MaybeRef};
 use internment::Intern;
 
 use crate::parsing::{
-    ast,
+    ast::{self, Ident, Spanned},
     lexer::Token,
     parser::{MugParser, ParseInput},
 };
@@ -153,6 +153,17 @@ impl MugError for BinopTypeMismatchError {
                 found, self.op, found,
             )))
             .with_note(format!("Expected arguments to have type {}", expected))
+            .finish()
+    }
+}
+
+pub struct UnknownVarError(pub Spanned<Ident>);
+
+impl MugError for UnknownVarError {
+    fn report(self: Box<Self>) -> Report<'static, Span> {
+        Report::build(ReportKind::Error, self.0.span)
+            .with_message(format!("Unknown variable `{}`", self.0.t))
+            .with_label(Label::new(self.0.span).with_message("Unknown variable"))
             .finish()
     }
 }
