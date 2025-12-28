@@ -1,9 +1,10 @@
-use std::mem;
-
 use crate::{
-    errors::{BinopTypeMismatchError, MugErr, Span, TypeMismatchError, UnknownVarError},
+    errors::{
+        BinopTypeMismatchError, ConditionNotBoolError, MugErr, Span, TypeMismatchError,
+        UnknownVarError,
+    },
     mir::{
-        BasicBlock, Inst, Place, Reg, TermInst, Val,
+        BasicBlock, BlockId, Inst, Place, Reg, TermInst, Val,
         build::{BbBuilder, MirBuilder},
     },
     parsing::ast::{BinOp, Expr, Ident, Spanned, Stmt, Typ, TypCompatible},
@@ -67,7 +68,7 @@ struct Var {
 
 pub struct Lower {
     mir: MirBuilder,
-    builder: BbBuilder,
+    builder: Option<BbBuilder>,
     events: Vec<Event>,
     errors: Vec<MugErr>,
 
@@ -77,10 +78,11 @@ pub struct Lower {
 impl Lower {
     pub fn new() -> Self {
         let mut mir = MirBuilder::new();
-        let builder = mir.block();
+        let id = mir.block_id();
+        let builder = mir.block(id);
         Lower {
             mir,
-            builder,
+            builder: Some(builder),
             vars: VariableRegistry::new(),
             events: vec![],
             errors: vec![],
@@ -96,7 +98,7 @@ impl Lower {
     }
 
     fn emit(&mut self, inst: Inst) {
-        self.builder.emit(inst);
+        self.builder.as_mut().unwrap().emit(inst);
     }
 
     fn imm(&mut self, dest: Reg, v: Val) -> Typ {
@@ -108,6 +110,19 @@ impl Lower {
             Val::False => Typ::Bool,
             Val::True => Typ::Bool,
         }
+    }
+
+    fn term(&mut self, inst: TermInst) {
+        let bb = self.builder.take().unwrap().term(inst);
+        self.events.push(Event::Block(bb));
+    }
+
+    fn start(&mut self, id: BlockId) {
+        assert!(
+            self.builder.is_none(),
+            "Started block without closing previous"
+        );
+        self.builder = Some(self.mir.block(id));
     }
 
     fn get_var(&mut self, name: &Spanned<Ident>) -> Option<Var> {
@@ -171,6 +186,51 @@ impl Lower {
 
                 let last = &exprs[exprs.len() - 1];
                 self.lower_expr(last, dest)
+            }
+            Expr::IfThenElse {
+                cond,
+                thbr,
+                elbr,
+                span,
+            } => {
+                let cond_reg = self.mir.temp();
+                let (cond_typ, cond_span) = self.lower_expr(cond, cond_reg);
+                if cond_typ != Typ::Bool && cond_typ.is_valid() {
+                    self.errors.push(Box::new(ConditionNotBoolError {
+                        is_elif: false,
+                        found_typ: cond_typ,
+                        found_span: cond_span,
+                    }));
+                }
+
+                let end = self.mir.block_id();
+                let th = self.mir.block_id();
+                let el = if elbr.is_some() {
+                    self.mir.block_id()
+                } else {
+                    end
+                };
+                self.term(TermInst::If {
+                    cond: cond_reg,
+                    th,
+                    el,
+                });
+
+                self.start(th);
+                let th_dest = self.mir.temp();
+                self.lower_expr(thbr, th_dest);
+                self.term(TermInst::Jmp(end));
+
+                if let Some(elbr) = elbr {
+                    self.start(el);
+                    let el_dest = self.mir.temp();
+                    self.lower_expr(elbr, el_dest);
+                    self.term(TermInst::Jmp(end));
+                }
+
+                self.start(end);
+
+                (Typ::Unit, *span)
             }
         }
     }
@@ -237,7 +297,7 @@ impl Lower {
             BinOp::Eq => todo!(),
             BinOp::NEq => todo!(),
         };
-        self.builder.emit(constructor(dest, mirtyp, val1, val2));
+        self.emit(constructor(dest, mirtyp, val1, val2));
 
         out_typ
     }
@@ -259,8 +319,11 @@ impl Lower {
         // TODO: check return type
         let dest = self.mir.temp();
         let (_typ, _loc) = self.lower_expr(expr, dest);
-        let block =
-            mem::replace(&mut self.builder, self.mir.block()).term(TermInst::Ret(Typ::I64, dest));
+        let block = self
+            .builder
+            .take()
+            .expect("no block currently open")
+            .term(TermInst::Ret(Typ::I64, dest));
         self.events.push(Event::Block(block));
     }
 

@@ -6,6 +6,7 @@ use logos::{Lexer, Logos};
 pub enum Token {
     Error,
     Eof,
+    // Binops
     #[token("+")]
     Plus,
     #[token("-")]
@@ -34,26 +35,38 @@ pub enum Token {
     EqEq,
     #[token("!=")]
     NEq,
-    #[token("let")]
-    Let,
     #[token("=")]
     Eq,
-    #[token(";")]
-    Semicolon,
-    #[token(".")]
-    Dot,
+    // Keywords
+    #[token("let")]
+    Let,
     #[token("return")]
     Return,
-    #[token("(")]
-    LParen,
-    #[token(")")]
-    RParen,
-    #[token(",")]
-    Comma,
     #[token("true")]
     True,
     #[token("false")]
     False,
+    #[token("if")]
+    If,
+    #[token("else")]
+    Else,
+    #[token("elif")]
+    Elif,
+    // Other
+    #[token(";")]
+    Semicolon,
+    #[token(".")]
+    Dot,
+    #[token(",")]
+    Comma,
+    #[token("(")]
+    LRound,
+    #[token(")")]
+    RRound,
+    #[token("{")]
+    LCurly,
+    #[token("}")]
+    RCurly,
     #[regex(r"-?[0-9][0-9_]*", int_10)]
     IntLit(i64),
     #[regex(r"[[:alpha:]_][[:alnum:]]*", ident)]
@@ -86,11 +99,16 @@ impl std::fmt::Display for Token {
             Token::Return => write!(f, "return"),
             Token::IntLit(s) => write!(f, "{s}"),
             Token::Ident(s) => write!(f, "{s}"),
-            Token::LParen => write!(f, "("),
-            Token::RParen => write!(f, ")"),
+            Token::LRound => write!(f, "("),
+            Token::RRound => write!(f, ")"),
             Token::Comma => write!(f, ","),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
+            Token::If => write!(f, "if"),
+            Token::Else => write!(f, "else"),
+            Token::Elif => write!(f, "elif"),
+            Token::LCurly => write!(f, "{{"),
+            Token::RCurly => write!(f, "}}"),
         }
     }
 }

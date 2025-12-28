@@ -14,10 +14,12 @@ impl<'a, I: ValueInput<'a, Token = Token, Span = Span>> ParseInput<'a> for I {}
 /// "Settings" for the parsers.
 type ParseExtra = extra::Err<ParseError>;
 
-pub trait MugParser<'a, I: ParseInput<'a>, O>: Parser<'a, I, O, ParseExtra> + Clone {
+pub trait MugParser<'a, I: ParseInput<'a>, O>: Parser<'a, I, O, ParseExtra> + Clone + 'a {
     fn spanned(self) -> impl MugParser<'a, I, crate::parsing::ast::Spanned<O>>;
 }
-impl<'a, I: ParseInput<'a>, O, P: Parser<'a, I, O, ParseExtra> + Clone> MugParser<'a, I, O> for P {
+impl<'a, I: ParseInput<'a>, O: 'a, P: Parser<'a, I, O, ParseExtra> + Clone + 'a> MugParser<'a, I, O>
+    for P
+{
     fn spanned(self) -> impl MugParser<'a, I, crate::parsing::ast::Spanned<O>> {
         self.map_with(|t, s| Spanned { t, span: s.span() })
     }
@@ -28,7 +30,7 @@ impl<'a, I: ParseInput<'a>, O, P: Parser<'a, I, O, ParseExtra> + Clone> MugParse
 #[allow(dead_code)]
 fn is_parser<'a, O, I: ParseInput<'a>>(_: &impl Parser<'a, I, O, ParseExtra>) {}
 
-fn comma_list<'a, I: ParseInput<'a>, O>(
+fn comma_list<'a, I: ParseInput<'a>, O: 'a>(
     p: impl MugParser<'a, I, O>,
 ) -> impl MugParser<'a, I, Vec<O>> {
     p.separated_by(just(Token::Comma))
@@ -36,7 +38,7 @@ fn comma_list<'a, I: ParseInput<'a>, O>(
         .collect::<Vec<_>>()
 }
 
-fn semicolon_list<'a, I: ParseInput<'a>, O>(
+fn semicolon_list<'a, I: ParseInput<'a>, O: 'a>(
     p: impl MugParser<'a, I, O>,
 ) -> impl MugParser<'a, I, Vec<O>> {
     p.separated_by(just(Token::Semicolon).repeated().at_least(1))
@@ -44,11 +46,11 @@ fn semicolon_list<'a, I: ParseInput<'a>, O>(
         .collect::<Vec<_>>()
 }
 
-fn parens<'a, I: ParseInput<'a>, O>(p: impl MugParser<'a, I, O>) -> impl MugParser<'a, I, O> {
-    p.delimited_by(just(Token::LParen), just(Token::RParen))
+fn parens<'a, I: ParseInput<'a>, O: 'a>(p: impl MugParser<'a, I, O>) -> impl MugParser<'a, I, O> {
+    p.delimited_by(just(Token::LRound), just(Token::RRound))
 }
 
-fn parens_comma_list<'a, I: ParseInput<'a>, O>(
+fn parens_comma_list<'a, I: ParseInput<'a>, O: 'a>(
     p: impl MugParser<'a, I, O>,
 ) -> impl MugParser<'a, I, Vec<O>> {
     parens(comma_list(p))
@@ -57,8 +59,8 @@ fn parens_comma_list<'a, I: ParseInput<'a>, O>(
 // ===== Atoms =====
 
 fn unit_lit<'a, I: ParseInput<'a>>() -> impl MugParser<'a, I, Expr> {
-    just(Token::LParen)
-        .then(just(Token::RParen))
+    just(Token::LRound)
+        .then(just(Token::RRound))
         .map_with(|_, s| Expr::Unit(s.span()))
 }
 
@@ -128,8 +130,43 @@ fn vardecl<'a, I: ParseInput<'a>>(
         })
 }
 
+fn if_else<'a, I: ParseInput<'a>>(
+    expr: impl MugParser<'a, I, Expr>,
+) -> impl MugParser<'a, I, Expr> {
+    let body = just(Token::LCurly)
+        .ignore_then(expr.clone().or_not().spanned())
+        .then_ignore(just(Token::RCurly))
+        // If the body is empty, parse it as a unit constructor
+        .map(|e| e.t.unwrap_or(Expr::Unit(e.span)));
+
+    let pr_if = just(Token::If).ignore_then(expr.clone()).then(body.clone());
+    let pr_else = just(Token::Else).ignore_then(body.clone());
+    let pr_elif = recursive(|z| {
+        just(Token::Elif)
+            .ignore_then(expr.clone())
+            .then(body.clone())
+            .then(z.or_not())
+            .map_with(|((cond, thbr), elbr), s| Expr::IfThenElse {
+                cond: Box::new(cond),
+                thbr: Box::new(thbr),
+                elbr: elbr.map(Box::new),
+                span: s.span(),
+            })
+    });
+
+    pr_if
+        .then(pr_else.or(pr_elif).map(Box::new).or_not())
+        .map_with(|((cond, thbr), elbr), s| Expr::IfThenElse {
+            cond: Box::new(cond),
+            thbr: Box::new(thbr),
+            span: s.span(),
+            elbr,
+        })
+}
+
 fn atom<'a, I: ParseInput<'a>>(expr: impl MugParser<'a, I, Expr>) -> impl MugParser<'a, I, Expr> {
     let atom = vardecl(expr.clone())
+        .or(if_else(expr.clone()))
         .or(assign(expr.clone()))
         .or(call(expr))
         .or(negative_int())

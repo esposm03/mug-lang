@@ -197,8 +197,8 @@ impl<'a> ClifTranslator<'a> {
                     let (typ, val) = match val {
                         Val::I8(val) => (types::I8, val as i64),
                         Val::I64(val) => (types::I64, val),
-                        Val::False => todo!(),
-                        Val::True => todo!(),
+                        Val::False => (types::I8, 0),
+                        Val::True => (types::I8, 1),
                     };
 
                     let res = self.ins().iconst(typ, val);

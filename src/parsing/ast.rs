@@ -147,7 +147,14 @@ pub enum Expr {
         function: Box<Expr>,
         args: Vec<Expr>,
     },
+
     Sequence(Vec<Expr>),
+    IfThenElse {
+        span: Span,
+        cond: Box<Expr>,
+        thbr: Box<Expr>,
+        elbr: Option<Box<Expr>>,
+    },
 }
 
 #[derive(Debug)]

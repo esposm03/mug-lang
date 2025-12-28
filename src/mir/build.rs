@@ -86,10 +86,13 @@ impl MirBuilder {
         self.reg(&format!("temp.{id}"))
     }
 
-    pub fn block(&mut self) -> BbBuilder {
+    pub fn block_id(&mut self) -> BlockId {
         let id = BlockId(self.next_bblock);
         self.next_bblock += 1;
+        id
+    }
 
+    pub fn block(&mut self, id: BlockId) -> BbBuilder {
         BbBuilder { id, insts: vec![] }
     }
 
