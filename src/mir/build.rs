@@ -8,6 +8,7 @@ pub struct BbBuilder {
 }
 
 impl BbBuilder {
+    #[expect(unused)]
     pub fn id(&self) -> BlockId {
         self.id
     }
@@ -17,6 +18,7 @@ impl BbBuilder {
         self
     }
 
+    #[expect(unused)]
     pub fn comment(&mut self, src: &str) -> &mut Self {
         let mut dest = [0u8; 23];
         if dest.len() == src.len() {
@@ -44,6 +46,7 @@ pub struct MirBuilder {
     next_symbol: usize,
     next_bblock: usize,
     next_temp: usize,
+    next_place: usize,
     symbols: HashMap<Symbol, String>,
     symbols_rev: HashMap<String, Symbol>,
 }
@@ -54,6 +57,7 @@ impl MirBuilder {
             next_symbol: 0,
             next_bblock: 0,
             next_temp: 0,
+            next_place: 0,
             symbols: HashMap::new(),
             symbols_rev: HashMap::new(),
         }
@@ -72,7 +76,8 @@ impl MirBuilder {
     }
 
     pub fn place(&mut self, name: &str) -> Place {
-        Place(self.sym(name))
+        self.next_place += 1;
+        Place(self.sym(&format!("{name}.{}", self.next_place)))
     }
 
     pub fn reg(&mut self, name: &str) -> Reg {
@@ -96,6 +101,7 @@ impl MirBuilder {
         BbBuilder { id, insts: vec![] }
     }
 
+    #[expect(unused)]
     pub fn print_block(&self, bb: &BasicBlock) {
         println!("{}:", bb.id);
         for inst in &bb.insts {

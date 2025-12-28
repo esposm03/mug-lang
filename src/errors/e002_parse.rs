@@ -2,7 +2,7 @@ use ariadne::{Color, Label, Report, ReportKind};
 use chumsky::{DefaultExpected, label::LabelError, util::MaybeRef};
 
 use crate::{
-    errors::{MugError, Span},
+    errors::Span,
     parsing::{
         lexer::Token,
         parser::{MugParser, ParseInput},
@@ -53,8 +53,8 @@ impl<'a, I: ParseInput<'a>> chumsky::error::Error<'a, I> for ParseError {
     }
 }
 
-impl MugError for ParseError {
-    fn report(self: Box<Self>) -> Report<'static, Span> {
+impl ParseError {
+    pub fn report(self) -> Report<'static, Span> {
         let expected = match self.expected {
             ParseExpected::Unknown => "<unknown>",
             ParseExpected::Identifier => "an identifier",

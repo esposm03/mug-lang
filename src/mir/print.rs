@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::mir::{BlockId, Inst, Place, Reg, Symbol, TermInst, Typ, Val};
+use crate::mir::{BlockId, Inst, Place, Reg, Symbol, TermInst, Val};
 
 // === BlockId ===
 

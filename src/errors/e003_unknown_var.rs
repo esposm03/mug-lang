@@ -1,14 +1,15 @@
 use ariadne::{Label, Report, ReportKind};
 
 use crate::{
-    errors::{MugError, Span},
+    errors::Span,
     parsing::ast::{Ident, Spanned},
 };
 
+#[derive(Debug, PartialEq)]
 pub struct UnknownVarError(pub Spanned<Ident>);
 
-impl MugError for UnknownVarError {
-    fn report(self: Box<Self>) -> Report<'static, Span> {
+impl UnknownVarError {
+    pub fn report(self) -> Report<'static, Span> {
         Report::build(ReportKind::Error, self.0.span)
             .with_code(3)
             .with_message(format!("Unknown variable `{}`", self.0.t))

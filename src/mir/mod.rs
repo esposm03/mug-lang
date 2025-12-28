@@ -1,19 +1,18 @@
-#![allow(unused)]
 use crate::parsing::ast::Typ;
 
 pub mod build;
 pub mod print;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Symbol(pub usize);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Place(pub Symbol);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Reg(pub Symbol);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BlockId(pub usize);
 
 impl From<Typ> for cranelift::prelude::Type {
@@ -37,6 +36,7 @@ impl From<&Typ> for cranelift::prelude::Type {
 
 #[derive(Clone, Copy)]
 pub enum Val {
+    #[expect(unused)]
     I8(i8),
     I64(i64),
     False,
@@ -54,6 +54,7 @@ pub enum Inst {
 
     Imm(Reg, Val),
     Add(Reg, Typ, Reg, Reg),
+    #[expect(unused)]
     Lt(Reg, Typ, Reg, Reg),
 }
 

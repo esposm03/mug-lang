@@ -133,7 +133,7 @@ pub enum Expr {
 
     VarDecl {
         lhs: Spanned<Ident>,
-        typ: Option<(Typ, Span)>,
+        typ: Option<Spanned<Typ>>,
         rhs: Box<Expr>,
     },
     Lval(Spanned<Ident>),

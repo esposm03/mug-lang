@@ -1,4 +1,7 @@
-use std::{fmt::Display, ops};
+use std::{
+    fmt::{Debug, Display},
+    ops,
+};
 
 use ariadne::Report;
 use internment::Intern;
@@ -72,14 +75,56 @@ impl chumsky::span::Span for Span {
     }
 }
 
-pub trait MugError {
-    fn report(self: Box<Self>) -> Report<'static, Span>;
+#[derive(Debug, PartialEq)]
+pub enum MugErr {
+    Io(MugIoError),
+    Parse(ParseError),
+    UnknownVar(UnknownVarError),
+    TypeMismatch(TypeMismatchError),
+    BinopTypeMismatch(BinopTypeMismatchError),
+    ConditionNotBool(ConditionNotBoolError),
 }
 
-pub type MugErr = Box<dyn MugError>;
+impl MugErr {
+    pub fn report(self) -> Report<'static, Span> {
+        match self {
+            MugErr::Io(e) => e.report(),
+            MugErr::Parse(e) => e.report(),
+            MugErr::UnknownVar(e) => e.report(),
+            MugErr::TypeMismatch(e) => e.report(),
+            MugErr::BinopTypeMismatch(e) => e.report(),
+            MugErr::ConditionNotBool(e) => e.report(),
+        }
+    }
+}
 
-impl<T: MugError + 'static> From<T> for MugErr {
-    fn from(value: T) -> Self {
-        Box::new(value)
+impl From<MugIoError> for MugErr {
+    fn from(value: MugIoError) -> Self {
+        MugErr::Io(value)
+    }
+}
+impl From<ParseError> for MugErr {
+    fn from(value: ParseError) -> Self {
+        MugErr::Parse(value)
+    }
+}
+impl From<UnknownVarError> for MugErr {
+    fn from(value: UnknownVarError) -> Self {
+        MugErr::UnknownVar(value)
+    }
+}
+impl From<TypeMismatchError> for MugErr {
+    fn from(value: TypeMismatchError) -> Self {
+        MugErr::TypeMismatch(value)
+    }
+}
+impl From<BinopTypeMismatchError> for MugErr {
+    fn from(value: BinopTypeMismatchError) -> Self {
+        MugErr::BinopTypeMismatch(value)
+    }
+}
+impl From<ConditionNotBoolError> for MugErr {
+    fn from(value: ConditionNotBoolError) -> Self {
+        MugErr::ConditionNotBool(value)
     }
 }

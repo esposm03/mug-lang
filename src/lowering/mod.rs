@@ -7,8 +7,10 @@ use crate::{
         BasicBlock, BlockId, Inst, Place, Reg, TermInst, Val,
         build::{BbBuilder, MirBuilder},
     },
-    parsing::ast::{BinOp, Expr, Ident, Spanned, Stmt, Typ, TypCompatible},
+    parsing::ast::{BinOp, Expr, Ident, Spanned, Stmt, Typ},
 };
+
+mod variables;
 
 pub enum Event {
     Function(String),
@@ -62,7 +64,7 @@ impl VariableRegistry {
 struct Var {
     typ: Typ,
     place: Place,
-    #[expect(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code))]
     declared_at: Span,
 }
 
@@ -97,6 +99,10 @@ impl Lower {
         }
     }
 
+    fn err(&mut self, e: impl Into<MugErr>) {
+        self.errors.push(e.into());
+    }
+
     fn emit(&mut self, inst: Inst) {
         self.builder.as_mut().unwrap().emit(inst);
     }
@@ -126,11 +132,11 @@ impl Lower {
     }
 
     fn get_var(&mut self, name: &Spanned<Ident>) -> Option<Var> {
-        let v = self.vars.get(name);
+        let v = self.vars.get(name).cloned();
         if v.is_none() {
-            self.errors.push(Box::new(UnknownVarError(*name)))
+            self.err(UnknownVarError(*name));
         }
-        v.cloned()
+        v
     }
 
     pub fn lower_expr(&mut self, expr: &Expr, dest: Reg) -> (Typ, Span) {
@@ -143,38 +149,9 @@ impl Lower {
             ),
             Expr::BinOp { left, op, right } => (self.lower_binop(dest, *op, left, right), op.span),
             Expr::UnOp { .. } => todo!(),
-            Expr::VarDecl { lhs, typ, rhs } => {
-                self.lower_var_decl(*lhs, *typ, rhs);
-                (Typ::Unit, lhs.span)
-            }
-            Expr::Lval(ident) => {
-                let v = self.vars.get(ident).unwrap();
-                let res = (v.typ, ident.span);
-                if v.typ.is_valid() {
-                    self.emit(Inst::Load(dest, convert_ast_typ(v.typ), v.place));
-                }
-                res
-            }
-            Expr::Assignment { lhs, rhs, loc } => {
-                let tmp = self.mir.temp();
-                let (rhs_typ, rhs_span) = self.lower_expr(rhs, tmp);
-
-                if let Some(v) = self.get_var(lhs) {
-                    if !v.typ.compatible(rhs_typ) {
-                        self.errors.push(Box::new(TypeMismatchError {
-                            span_total: *loc,
-                            span1: lhs.span,
-                            typ1: v.typ,
-                            span2: rhs_span,
-                            typ2: rhs_typ,
-                        }));
-                    }
-
-                    self.emit(Inst::Store(v.place, convert_ast_typ(rhs_typ), tmp));
-                }
-
-                (Typ::Unit, *loc)
-            }
+            Expr::VarDecl { lhs, typ, rhs } => self.lower_var_decl(*lhs, *typ, rhs),
+            Expr::Lval(ident) => self.lower_val_read(dest, *ident),
+            Expr::Assignment { lhs, rhs, loc } => self.lower_val_write(lhs, rhs, loc),
             Expr::Call { .. } => todo!(),
             Expr::Sequence(exprs) => {
                 if exprs.len() >= 2 {
@@ -196,11 +173,11 @@ impl Lower {
                 let cond_reg = self.mir.temp();
                 let (cond_typ, cond_span) = self.lower_expr(cond, cond_reg);
                 if cond_typ != Typ::Bool && cond_typ.is_valid() {
-                    self.errors.push(Box::new(ConditionNotBoolError {
+                    self.err(ConditionNotBoolError {
                         is_elif: false,
                         found_typ: cond_typ,
                         found_span: cond_span,
-                    }));
+                    });
                 }
 
                 let end = self.mir.block_id();
@@ -242,13 +219,13 @@ impl Lower {
         let (typ2, span2) = self.lower_expr(right, val2);
 
         if typ1 != typ2 && typ1.is_valid() && typ2.is_valid() {
-            self.errors.push(Box::new(TypeMismatchError {
+            self.err(TypeMismatchError {
                 span_total: op.span,
                 span1,
                 typ1,
                 span2,
                 typ2,
-            }));
+            });
             return Typ::Error;
         }
 
@@ -267,12 +244,12 @@ impl Lower {
             BinOp::NEq => (Typ::Bool, typ1),
         };
         if expected_typ != typ1 && typ1.is_valid() {
-            self.errors.push(Box::new(BinopTypeMismatchError {
+            self.err(BinopTypeMismatchError {
                 span_total: op.span,
                 op: op.t,
                 arg_types: typ1,
                 expected: expected_typ,
-            }));
+            });
         }
 
         let mirtyp = match out_typ {
@@ -325,33 +302,6 @@ impl Lower {
             .expect("no block currently open")
             .term(TermInst::Ret(Typ::I64, dest));
         self.events.push(Event::Block(block));
-    }
-
-    fn lower_var_decl(&mut self, lhs: Spanned<Ident>, ty: Option<(Typ, Span)>, rhs: &Expr) {
-        let rhs_expr = self.mir.temp();
-        let (mut typ, _rhs_span) = self.lower_expr(rhs, rhs_expr);
-        let place = self.mir.place(&lhs.t.0);
-
-        use crate::parsing::ast::TypCompatible;
-        if let Some((declared_type, _loc)) = ty {
-            if !typ.compatible(declared_type) {
-                // self.errors.push(Box::new(TypeMismatchError {
-                //     span_total: todo!(),
-                //     span1: todo!(),
-                //     typ1: todo!(),
-                //     span2: todo!(),
-                //     typ2: todo!(),
-                // }));
-                todo!("Need to push a TypeMismatchError")
-            }
-            typ = declared_type;
-        }
-
-        self.vars.set(lhs, place, typ);
-        if typ.is_valid() {
-            self.emit(Inst::Alloca(place, convert_ast_typ(typ)));
-            self.emit(Inst::Store(place, convert_ast_typ(typ), rhs_expr));
-        }
     }
 }
 

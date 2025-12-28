@@ -1,10 +1,11 @@
 use ariadne::{ColorGenerator, Fmt, Label, Report, ReportKind};
 
 use crate::{
-    errors::{MugError, Span},
+    errors::Span,
     parsing::ast::{BinOp, Typ},
 };
 
+#[derive(Debug, PartialEq)]
 pub struct BinopTypeMismatchError {
     pub span_total: Span,
     pub op: BinOp,
@@ -12,8 +13,8 @@ pub struct BinopTypeMismatchError {
     pub expected: Typ,
 }
 
-impl MugError for BinopTypeMismatchError {
-    fn report(self: Box<Self>) -> Report<'static, Span> {
+impl BinopTypeMismatchError {
+    pub fn report(self) -> Report<'static, Span> {
         let mut colors = ColorGenerator::new();
         let expected = self.expected.fg(colors.next());
         let found = self.arg_types.fg(colors.next());

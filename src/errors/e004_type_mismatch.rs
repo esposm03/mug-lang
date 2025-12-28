@@ -1,10 +1,8 @@
 use ariadne::{ColorGenerator, Fmt, Label, Report, ReportKind};
 
-use crate::{
-    errors::{MugError, Span},
-    parsing::ast::Typ,
-};
+use crate::{errors::Span, parsing::ast::Typ};
 
+#[derive(Debug, PartialEq)]
 pub struct TypeMismatchError {
     pub span_total: Span,
     pub span1: Span,
@@ -13,8 +11,8 @@ pub struct TypeMismatchError {
     pub typ2: Typ,
 }
 
-impl MugError for TypeMismatchError {
-    fn report(self: Box<Self>) -> Report<'static, Span> {
+impl TypeMismatchError {
+    pub fn report(self) -> Report<'static, Span> {
         let mut colors = ColorGenerator::new();
         Report::build(ReportKind::Error, self.span_total)
             .with_code(4)
